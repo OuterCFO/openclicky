@@ -26,3 +26,12 @@ These are self-review checks, not independent review or a fresh-user live accept
 
 Intel hardware, alternate LLM providers, independent fresh-user setup, and notarized distribution are not yet certified.
 No screenshots or transcripts from the maintainer's personal desktop are published as test fixtures.
+
+## Clean checkout and GitHub publication
+
+A clean clone of the publication commit passed the source checks and runtime preparation without copying user authentication or memory.
+The clean clone built in Xcode 27 at 16:26 on 6 October 2026 using an ignored local signing override.
+The built application passed deep strict signature verification and contained the Codex executable, code-mode host, and runtime license.
+The source-check workflow passed on Ubuntu and macOS: [CI run 37478865735](https://github.com/OuterCFO/openclicky/actions/runs/37478865735).
+The first CI run exposed a false positive for an inherited public CI-runner path; the corrected scanner distinguishes CI paths from local developer paths.
+No live app interaction or fresh-account sign-in was performed in this clean-clone verification.

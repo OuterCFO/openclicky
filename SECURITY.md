@@ -42,6 +42,6 @@ A source download is not a notarized macOS application release.
 ## Reporting
 
 Do not publish a working exploit or private data in a public issue.
-Use GitHub's private vulnerability reporting when available on this repository.
-If unavailable, first open a minimal issue asking for a private reporting channel without disclosing exploit details.
+GitHub private vulnerability reporting is enabled on this repository.
+Use the Security tab to report a vulnerability privately.
 There is no promised security-response SLA for this community fork.
