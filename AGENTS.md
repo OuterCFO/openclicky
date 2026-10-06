@@ -86,3 +86,10 @@ swiftc -parse <relevant Swift source files>
 ```
 
 Do not launch unsigned or throwaway builds for TCC permission testing.
+
+## Session context and user testing
+
+Read `docs/SESSION-HANDOFF.md` first when asked to use the cursor or transfer Codex context.
+Authentication does not synchronize conversations; the current supported procedure is an explicit message handoff.
+Automatic bidirectional synchronization remains planned in `docs/ROADMAP.md`.
+The user performs live UI, shortcut, dictation, and pointer tests; do not inject demos into their task.

@@ -22,6 +22,11 @@ The interface runs locally; AI inference on the default route runs remotely thro
 No local LLM is required.
 The code is free under the MIT license, but provider access, subscription limits, and Wispr's own service terms still apply.
 
+## Use it with a Codex conversation
+
+Read the [short session handoff guide](docs/SESSION-HANDOFF.md).
+It explains what context is shared, what is not, and how to transfer a brief in both directions today.
+
 ## Planned work
 
 [Bidirectional session connection](docs/ROADMAP.md): connect an active Codex session with its Cursor Task Manager conversation, preserving context and progress in both directions.
