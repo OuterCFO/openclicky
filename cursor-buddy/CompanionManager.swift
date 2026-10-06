@@ -8713,7 +8713,7 @@ final class CompanionManager: ObservableObject {
     }
 
     private func saveCompactConversation() {
-        companionConversations.update(entries: homeChatEntries, summary: compactedVoiceConversationArchive)
+        companionConversations.update(entries: companionConversations.active.boundThreadID == nil ? homeChatEntries : Array(homeChatEntries.suffix(24)), summary: compactedVoiceConversationArchive)
         companionConversations.save()
     }
     private func refreshCompanionTaskIcons() {
@@ -8732,9 +8732,68 @@ final class CompanionManager: ObservableObject {
     }
     private func ensureTutorDockItem() { saveCompactConversation(); refreshCompanionTaskIcons() }
     private var compactInputAgentSessionID: UUID?
+    @Published private(set) var sharedSessionStatus = "Disconnected"
+    lazy var sharedCodexSession: CodexSharedSessionClient = {
+        let client = CodexSharedSessionClient()
+        client.onStatus = { [weak self] status in
+            self?.sharedSessionStatus = status
+            if status.hasPrefix("Waiting"), self?.currentResponseTask != nil {
+                self?.updateVoiceResponseCaption(status, force: true, updatesDock: false)
+            }
+        }
+        return client
+    }()
+    var boundCodexThreadID: String? { compactInputAgentSessionID == nil ? companionConversations.active.boundThreadID : nil }
+
+    func showCodexSessionConnectionPicker() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let threads = try await self.sharedCodexSession.listThreads()
+                let live = threads.filter(\.canConnect)
+                let alert = NSAlert()
+                alert.messageText = "Connect cursor to Codex"
+                alert.informativeText = "Choose a live session on the shared Codex server. Sessions owned by a separate desktop server cannot attach yet. The cursor will use the selected session’s model, tools, permissions, and history."
+                guard !live.isEmpty else {
+                    alert.informativeText = "No compatible live Codex session is available. Open a session in the current Codex terminal client first. Your existing desktop chat was not copied or changed."
+                    alert.addButton(withTitle: "OK"); alert.runModal(); return
+                }
+                let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 400, height: 28))
+                for thread in live { picker.addItem(withTitle: thread.title) }
+                for thread in threads where !thread.canConnect {
+                    picker.addItem(withTitle: thread.title + " - unavailable")
+                    picker.lastItem?.isEnabled = false
+                }
+                alert.accessoryView = picker
+                alert.addButton(withTitle: "Connect"); alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn,
+                      live.indices.contains(picker.indexOfSelectedItem) else { return }
+                let chosen = live[picker.indexOfSelectedItem]
+                try await self.sharedCodexSession.connect(to: chosen.id)
+                let entries = try await self.sharedCodexSession.transcript(for: chosen.id)
+                self.dismissCoachingOverlays()
+                self.saveCompactConversation()
+                self.companionConversations.startNew()
+                let index = self.companionConversations.conversations.count - 1
+                self.companionConversations.conversations[index].boundThreadID = chosen.id
+                self.companionConversations.conversations[index].boundThreadTitle = "Codex: " + chosen.title
+                self.companionConversations.update(entries: entries, summary: nil)
+                self.activateCompactConversation()
+                self.showTutorConversation()
+            } catch {
+                let alert = NSAlert(); alert.messageText = "Could not connect to Codex"
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "OK"); alert.runModal()
+            }
+        }
+    }
 
     private func activateCompactConversation() {
         dismissCoachingOverlays()
+        if sharedCodexSession.connectedThreadID != companionConversations.active.boundThreadID {
+            sharedCodexSession.disconnect()
+            sharedSessionStatus = "Disconnected"
+        }
         codexVoiceSession.stop()
         codexVoiceSession = CodexVoiceSession(model: OpenClickyModelCatalog.codexVoiceSessionModel(withID: selectedModel).id,
                                             homeManager: codexHomeManager)
@@ -8783,17 +8842,47 @@ final class CompanionManager: ObservableObject {
         } + codexAgentSessions.filter { $0.hasVisibleActivity && !archivedSessionIDs.contains($0.id) }.map {
             CompactTaskChoice(id: $0.id, title: $0.title)
         }
+        let linkedID = boundCodexThreadID
+        let historyLoader: CompactHistoryLoader?
+        if let id = linkedID {
+            historyLoader = { [weak self] in
+                guard let self else { throw CancellationError() }
+                return try await self.sharedCodexSession.transcript(for: id)
+            }
+        } else { historyLoader = nil }
         notchCaptureWindowManager.showConversationInput(entries: entries, historyVisible: historyVisible, title: title,
             taskChoices: choices,
             selectTask: { [weak self] id in _ = self?.showCompactConversationForAgentDockItem(id) },
+            loadHistory: historyLoader,
+            connectTask: { [weak self] in self?.showCodexSessionConnectionPicker() },
             newTask: { [weak self] in self?.startNewCompactTask() },
             removeTask: { [weak self] in self?.removeCurrentCompactTask() }, submit: submit)
     }
     func showTutorConversation() {
         compactInputAgentSessionID = nil
         ensureTutorDockItem()
-        presentCompactTask(entries: homeChatEntries, historyVisible: true,
-                           title: companionConversations.active.title) { [weak self] text in self?.submitTutorPrompt(text) }
+        if let threadID = boundCodexThreadID {
+            let taskID = companionConversations.activeID
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    if self.sharedCodexSession.connectedThreadID != threadID { try await self.sharedCodexSession.connect(to: threadID) }
+                    let entries = try await self.sharedCodexSession.transcript(for: threadID)
+                    guard self.companionConversations.activeID == taskID else { return }
+                    self.homeChatEntries = entries
+                    self.saveCompactConversation()
+                    self.presentCompactTask(entries: entries, historyVisible: true,
+                        title: self.companionConversations.active.title) { [weak self] text in self?.submitTutorPrompt(text) }
+                } catch {
+                    guard self.companionConversations.activeID == taskID else { return }
+                    self.presentCompactTask(entries: self.homeChatEntries, historyVisible: true,
+                        title: "Disconnected - " + self.companionConversations.active.title) { [weak self] text in self?.submitTutorPrompt(text) }
+                }
+            }
+        } else {
+            presentCompactTask(entries: homeChatEntries, historyVisible: true,
+                               title: companionConversations.active.title) { [weak self] text in self?.submitTutorPrompt(text) }
+        }
     }
     @discardableResult
     func showCompactConversationForAgentDockItem(_ itemID: UUID) -> Bool {

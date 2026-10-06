@@ -351,10 +351,11 @@ final class OpenClickyNotchCaptureWindowManager {
 
     func showConversationInput(entries: [CodexTranscriptEntry], historyVisible: Bool = false, title: String = "OpenClicky",
                                taskChoices: [CompactTaskChoice] = [], selectTask: ((UUID) -> Void)? = nil,
+                               loadHistory: CompactHistoryLoader? = nil, connectTask: (() -> Void)? = nil,
                                newTask: (() -> Void)? = nil, removeTask: (() -> Void)? = nil,
                                submit: @escaping (String) -> Void) {
         hide()
-        menuBarPromptWindowManager.show(entries: entries, historyVisible: historyVisible, title: title, taskChoices: taskChoices, selectTask: selectTask, newTask: newTask, removeTask: removeTask, submit: submit)
+        menuBarPromptWindowManager.show(entries: entries, historyVisible: historyVisible, title: title, taskChoices: taskChoices, selectTask: selectTask, loadHistory: loadHistory, connectTask: connectTask, newTask: newTask, removeTask: removeTask, submit: submit)
     }
 
     func showTextInput(accentTheme: ClickyAccentTheme? = nil, submitText: @escaping (String) -> Void) {

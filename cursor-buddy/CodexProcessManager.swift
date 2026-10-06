@@ -13,12 +13,13 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
 
     var onNotification: (([String: Any]) -> Void)?
     var onStderrLine: ((String) -> Void)?
+    var onTermination: (() -> Void)?
 
     var isRunning: Bool {
         stateQueue.sync { process?.isRunning == true }
     }
 
-    func start(executableURL: URL, codexHome: URL) throws {
+    func start(executableURL: URL, codexHome: URL, sharedSocket: URL? = nil, bridgeScript: URL? = nil) throws {
         if isRunning { return }
 
         let process = Process()
@@ -26,7 +27,7 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
         let outputPipe = Pipe()
         let errorPipe = Pipe()
 
-        process.executableURL = executableURL
+        process.executableURL = sharedSocket == nil ? executableURL : URL(fileURLWithPath: "/usr/bin/python3")
         process.arguments = [
             "app-server",
             "--listen", "stdio://",
@@ -41,6 +42,12 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
             "-c", "approval_policy=\"never\"",
             "-c", "sandbox_mode=\"workspace-write\""
         ]
+        if let sharedSocket {
+            guard let bridgeScript, FileManager.default.fileExists(atPath: bridgeScript.path) else {
+                throw CodexRPCError(message: "The shared-session transport is missing from this app build.")
+            }
+            process.arguments = [bridgeScript.path, sharedSocket.path]
+        }
         process.standardInput = inputPipe
         process.standardOutput = outputPipe
         process.standardError = errorPipe
@@ -50,7 +57,7 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
         let configFile = codexHome.appendingPathComponent("config.toml", isDirectory: false)
         let configText = (try? String(contentsOf: configFile, encoding: .utf8)) ?? ""
         let prefersChatGPTAuth = configText.contains("preferred_auth_method = \"chatgpt\"")
-        if let configuredAPIKey = AppBundleConfiguration.openAIAPIKey(),
+        if sharedSocket == nil, let configuredAPIKey = AppBundleConfiguration.openAIAPIKey(),
            !configuredAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             environment["OPENAI_API_KEY"] = configuredAPIKey
         } else if prefersChatGPTAuth {
@@ -59,7 +66,9 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
 
         process.environment = environment
         process.terminationHandler = { [weak self] terminated in
-            self?.failAllPendingRequests(message: "Codex app-server exited with status \(terminated.terminationStatus).")
+            guard let self, self.stateQueue.sync(execute: { self.process === terminated }) else { return }
+            self.failAllPendingRequests(message: "Codex app-server exited with status \(terminated.terminationStatus).")
+            self.onTermination?()
         }
 
         // H5: assign process/pipe ivars behind stateQueue so concurrent
@@ -210,11 +219,11 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
         ])
     }
 
-    func sendRequest(method: String, params: [String: Any]) async throws -> [String: Any] {
-        try await sendRequest(request: CodexRPCRequest(method: method, params: params))
+    func sendRequest(method: String, params: [String: Any], timeout: TimeInterval? = nil) async throws -> [String: Any] {
+        try await sendRequest(request: CodexRPCRequest(method: method, params: params), timeout: timeout)
     }
 
-    func sendRequest(request: CodexRPCRequest) async throws -> [String: Any] {
+    func sendRequest(request: CodexRPCRequest, timeout: TimeInterval? = nil) async throws -> [String: Any] {
         guard isRunning else {
             throw CodexRPCError(message: "Codex app-server is not running.")
         }
@@ -242,6 +251,11 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
                 guard let self else { return }
                 self.pending[requestID] = continuation
                 self.writeLine(line)
+                if let timeout {
+                    self.stateQueue.asyncAfter(deadline: .now() + timeout) { [weak self] in
+                        self?.pending.removeValue(forKey: requestID)?.resume(throwing: CodexRPCError(message: "Codex request timed out. The original session was not restarted."))
+                    }
+                }
             }
         }
     }
@@ -264,6 +278,13 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
         stateQueue.async { [weak self] in
             self?.writeLine(line)
         }
+    }
+
+    func sendResponse(id: Any, result: [String: Any]) throws {
+        guard id is Int || id is String else { throw CodexRPCError(message: "Invalid server request ID.") }
+        let data = try JSONSerialization.data(withJSONObject: ["id": id, "result": result])
+        guard let line = String(data: data, encoding: .utf8) else { return }
+        stateQueue.async { [weak self] in self?.writeLine(line) }
     }
 
     func stop() {
@@ -352,7 +373,9 @@ nonisolated final class CodexProcessManager: @unchecked Sendable {
                     fields: Self.summarizedMessageFieldsForLog(message)
                 )
             }
-            if let id = CodexJSON.int(message["id"]) {
+            if message["method"] != nil {
+                onNotification?(message)
+            } else if let id = CodexJSON.int(message["id"]) {
                 let continuation = pending.removeValue(forKey: id)
                 if let error = CodexJSON.dictionary(message["error"]) {
                     var text = CodexRPCErrorMessage.readableMessage(from: error["message"])

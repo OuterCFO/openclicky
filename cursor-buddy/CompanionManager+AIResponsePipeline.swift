@@ -1083,6 +1083,10 @@ extension CompanionManager {
         assistantPrefill: String? = nil,
         onTextChunk: @MainActor @Sendable @escaping (String) -> Void
     ) async throws -> String {
+        if let threadID = boundCodexThreadID {
+            return try await sharedCodexSession.submit(threadID: threadID, prompt: userPrompt,
+                images: images, onTextChunk: onTextChunk)
+        }
         let requestedModelID = modelID ?? selectedModel
         let selectedVoiceResponseModel = OpenClickyModelCatalog.isSpeechModelID(requestedModelID)
             ? OpenClickyModelCatalog.voiceAnalysisModel(withID: requestedModelID)

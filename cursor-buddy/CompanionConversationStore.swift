@@ -6,7 +6,9 @@ nonisolated struct CompanionConversationStore: Codable {
         var entries: [CodexTranscriptEntry]
         var summary: String?
         var archived = false
-        var title: String { entries.first(where: { $0.role == .user }).map { String($0.text.prefix(42)) } ?? "New task" }
+        var boundThreadID: String?
+        var boundThreadTitle: String?
+        var title: String { boundThreadTitle ?? entries.first(where: { $0.role == .user }).map { String($0.text.prefix(42)) } ?? "New task" }
     }
     static let defaultsKey = "openclicky.companionConversations"
     var conversations: [Conversation]

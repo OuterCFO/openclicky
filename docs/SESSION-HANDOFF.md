@@ -3,7 +3,10 @@
 OpenClicky is a general screen-aware Mac companion, not a tutor-only tool.
 Its interface runs locally and its default inference uses Codex with ChatGPT sign-in.
 Shared authentication does not import the active Codex chat, ChatGPT chats, or other cursor conversations.
-Bidirectional automatic session sync is planned, not implemented.
+Live terminal sessions on the shared Codex server can now be connected directly through the compact panel's Connect button.
+Read SHARED-SESSIONS.md for the short setup and acceptance test.
+A connected cursor uses the same thread; no summary transfer is needed.
+Desktop chats hosted by a separate server remain unsupported for direct attachment and use the explicit handoff procedure below.
 
 ## Current controls
 

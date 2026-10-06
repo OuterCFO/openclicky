@@ -2,7 +2,10 @@
 
 ## Next: bidirectional Codex session connection
 
-Status: planned, not implemented.
+Status: shared-server terminal attachment implemented; desktop attachment and user live acceptance remain pending.
+
+The intended design is now a cursor client attached to the same Codex thread, rather than synchronization between separate chats.
+See [the pragmatic shared-session plan](engineering/SHARED-SESSION-PLAN.md).
 
 Connect an active Codex session with the corresponding Cursor Task Manager session.
 When the user invokes the cursor, it should continue from the Codex session’s latest context and progress.

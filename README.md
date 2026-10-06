@@ -12,6 +12,8 @@ It is independent of the commercial Clicky product and of OpenAI.
 - **Command + Option** opens a focused input and starts Wispr Flow.
 - Multiline prompts wrap and grow; longer drafts scroll.
 - New task, Tasks, and Remove task controls live in the compact panel; independent screen conversations persist across restarts.
+- Connect links a cursor task to a live shared-server Codex terminal conversation, preserving its thread, settings, and history.
+  See [shared-session setup and limits](docs/SHARED-SESSIONS.md).
 - A task's menu bar icon opens its conversation history in the same panel.
 - Follow-ups stay with the selected session; separate tasks have separate transcripts.
 - Answers appear beside the moving AI pointer, with optional screen highlights.
@@ -31,7 +33,7 @@ It explains what context is shared, what is not, and how to transfer a brief in 
 ## Planned work
 
 [Bidirectional session connection](docs/ROADMAP.md): connect an active Codex session with its Cursor Task Manager conversation, preserving context and progress in both directions.
-This connection is not implemented yet.
+Terminal attachment through the shared server is implemented; attachment to desktop chats on a separate server is still pending.
 
 ## Get started
 

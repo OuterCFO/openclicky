@@ -34,7 +34,20 @@ store.save(to: defaults)
 precondition(CompanionConversationStore.load(from: defaults).activeID == store.activeID)
 defaults.set(Data("invalid".utf8), forKey: CompanionConversationStore.defaultsKey)
 precondition(CompanionConversationStore.load(from: defaults, legacyEntries: [first]).active.entries == [first])
+precondition(SharedCodexSessionContract.isLive("idle") && SharedCodexSessionContract.isLive("active"))
+precondition(!SharedCodexSessionContract.isLive("notLoaded") && !SharedCodexSessionContract.isLive("systemError"))
+let input: [[String: Any]] = [["type": "text", "text": "same thread"], ["type": "localImage", "path": "/tmp/screen.png"]]
+let params = SharedCodexSessionContract.turnParameters(threadID: "existing-thread", input: input)
+precondition(Set(params.keys) == ["threadId", "input"])
+precondition(params["threadId"] as? String == "existing-thread")
+precondition((params["input"] as? [[String: Any]])?.count == 2)
+store.conversations[store.conversations.count - 1].boundThreadID = "existing-thread"
+store.conversations[store.conversations.count - 1].boundThreadTitle = "Codex: original"
+store.save(to: defaults)
+let reloaded = CompanionConversationStore.load(from: defaults)
+precondition(reloaded.active.boundThreadID == "existing-thread" && reloaded.active.title == "Codex: original")
+print("PASS: live-only binding, unchanged session settings, screenshot input, and reconnect metadata")
 print("PASS: independent tasks, selection, persistence, archive, final-task removal, and legacy fallback")
 SWIFT
-swiftc "$OUT/Transcript.swift" "$ROOT/cursor-buddy/CompanionConversationStore.swift" "$OUT/main.swift" -o "$OUT/check"
+swiftc "$OUT/Transcript.swift" "$ROOT/cursor-buddy/CompanionConversationStore.swift" "$ROOT/cursor-buddy/SharedCodexSessionContract.swift" "$OUT/main.swift" -o "$OUT/check"
 "$OUT/check"

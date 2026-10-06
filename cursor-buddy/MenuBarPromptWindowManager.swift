@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 
+typealias CompactHistoryLoader = @MainActor () async throws -> [CodexTranscriptEntry]
+
 nonisolated struct CompactTaskChoice: Identifiable {
     let id: UUID
     let title: String
@@ -13,6 +15,7 @@ final class MenuBarPromptWindowManager {
 
     func show(entries: [CodexTranscriptEntry] = [], historyVisible: Bool = false, title: String = "OpenClicky",
               taskChoices: [CompactTaskChoice] = [], selectTask: ((UUID) -> Void)? = nil,
+              loadHistory: CompactHistoryLoader? = nil, connectTask: (() -> Void)? = nil,
               newTask: (() -> Void)? = nil, removeTask: (() -> Void)? = nil,
               submit: @escaping (String) -> Void) {
         if let application = NSWorkspace.shared.frontmostApplication,
@@ -33,7 +36,7 @@ final class MenuBarPromptWindowManager {
         }
         guard let panel else { return }
         panel.contentView = NSHostingView(rootView: MenuBarPromptView(
-            entries: entries, historyVisible: historyVisible, title: title, taskChoices: taskChoices, selectTask: selectTask, newTask: newTask, removeTask: removeTask,
+            entries: entries, historyVisible: historyVisible, title: title, taskChoices: taskChoices, selectTask: selectTask, loadHistory: loadHistory, connectTask: connectTask, newTask: newTask, removeTask: removeTask,
             submit: { [weak self] text in self?.dismiss(); submit(text) },
             cancel: { [weak self] in self?.dismiss() },
             resize: { [weak self] height in self?.resize(to: height) }
@@ -73,15 +76,20 @@ private struct MenuBarPromptView: View {
     let title: String
     let taskChoices: [CompactTaskChoice]
     let selectTask: ((UUID) -> Void)?
+    let loadHistory: CompactHistoryLoader?
+    let connectTask: (() -> Void)?
     let newTask: (() -> Void)?
     let removeTask: (() -> Void)?
     let submit: (String) -> Void
     let cancel: () -> Void
     let resize: (CGFloat) -> Void
+    @State private var loadedEntries: [CodexTranscriptEntry]?
+    @State private var historyError: String?
     @State private var confirmRemoval = false
     @State private var draft = ""
     @State private var editorHeight: CGFloat = 32
 
+    private var displayedEntries: [CodexTranscriptEntry] { loadedEntries ?? entries }
     private var totalHeight: CGFloat { editorHeight + 70 + (historyVisible ? 260 : 0) }
 
     var body: some View {
@@ -95,8 +103,9 @@ private struct MenuBarPromptView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
-                            if entries.isEmpty { Text("No messages yet.").foregroundStyle(.secondary) }
-                            ForEach(entries) { entry in
+                            if let historyError { Text(historyError).foregroundStyle(.secondary) }
+                            if displayedEntries.isEmpty { Text("No messages yet.").foregroundStyle(.secondary) }
+                            ForEach(displayedEntries) { entry in
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(entry.role == .user ? "You" : "OpenClicky")
                                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
@@ -106,7 +115,7 @@ private struct MenuBarPromptView: View {
                             }
                         }
                     }.frame(height: 228)
-                    .onAppear { if let id = entries.last?.id { proxy.scrollTo(id, anchor: .bottom) } }
+                    .onAppear { if let id = displayedEntries.last?.id { proxy.scrollTo(id, anchor: .bottom) } }
                 }
             }
             HStack(alignment: .center, spacing: 12) {
@@ -133,10 +142,11 @@ private struct MenuBarPromptView: View {
                     }.menuStyle(.borderlessButton).fixedSize()
                 }
                 if !historyVisible { Button("History") { historyVisible = true } }
+                if let connectTask { Button("Connect", action: connectTask) }
                 if let newTask { Button("New task", action: newTask) }
                 if removeTask != nil { Button("Remove task") { confirmRemoval = true } }
             }.buttonStyle(.plain).font(.system(size: 11))
-            .confirmationDialog("Remove this task? Its history will be archived.", isPresented: $confirmRemoval) {
+            .confirmationDialog("Remove this cursor task? Its saved history and any connected Codex session will be kept.", isPresented: $confirmRemoval) {
                 Button("Remove task", role: .destructive) { removeTask?() }
                 Button("Cancel", role: .cancel) { }
             }
@@ -149,6 +159,11 @@ private struct MenuBarPromptView: View {
         .preferredColorScheme(.dark)
         .onAppear { resize(totalHeight) }
         .onChange(of: totalHeight) { resize(totalHeight) }
+        .task(id: historyVisible) {
+            guard historyVisible, let loadHistory else { return }
+            do { loadedEntries = try await loadHistory(); historyError = nil }
+            catch { if !Task.isCancelled { historyError = "Could not refresh Codex history: " + error.localizedDescription } }
+        }
         .onExitCommand(perform: cancel)
     }
 
