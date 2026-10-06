@@ -20,6 +20,12 @@ final class CompanionResponseOverlayViewModel: ObservableObject {
     @Published var streamingResponseText: String = ""
     @Published var isShowingResponse: Bool = false
     @Published var isHovered = false
+    @Published var showsFullReply = false
+    @Published var textHeight: CGFloat = 18
+    @Published var textWidth: CGFloat = 280
+    var onToggle: (() -> Void)?
+    var presentation: CursorReplyPresentation { CursorReplyPresentation(streamingResponseText) }
+    var displayedText: String { showsFullReply ? presentation.full : presentation.compact }
     weak var companion: CompanionManager?
 }
 
@@ -48,6 +54,11 @@ final class CompanionResponseOverlayManager {
 
     func bind(companion: CompanionManager) {
         overlayViewModel.companion = companion
+        overlayViewModel.onToggle = { [weak self] in
+            guard let self else { return }
+            self.overlayViewModel.showsFullReply.toggle()
+            self.resizePanelToFitContent()
+        }
     }
 
     func showOverlayAndBeginStreaming(clearText: Bool = true) {
@@ -55,6 +66,7 @@ final class CompanionResponseOverlayManager {
 
         if clearText {
             overlayViewModel.streamingResponseText = ""
+            overlayViewModel.showsFullReply = false
         }
         overlayViewModel.isHovered = false
         overlayViewModel.isShowingResponse = true
@@ -236,15 +248,21 @@ final class CompanionResponseOverlayManager {
         guard let overlayPanel, let contentView = overlayPanel.contentView,
               let responseHostingView else { return }
 
-        // The glass wrapper reports 10x10, regardless of its SwiftUI child.
-        // Measure the actual response host so text cannot become a clipped square.
-        let textWidth = (overlayViewModel.streamingResponseText as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width
-        let desiredWidth = min(max(ceil(textWidth) + 44, 124), 340)
+        let display = overlayViewModel.displayedText
+        let textWidth = ReplyMarkdown.render(display).size().width
+        let desiredWidth = min(max(ceil(textWidth) + 44, 180), 340)
+        let textWidthAvailable = desiredWidth - 44 - 15
+        overlayViewModel.textWidth = desiredWidth - 44
+        let screen = overlayViewModel.companion?.cursorOverlayState.aiPointerScreenLocation.flatMap {
+            NSScreen.screen(containingOrNearestTo: $0)
+        }
+        let maximumHeight = min(280, (screen?.visibleFrame.height ?? 700) - 90)
+        overlayViewModel.textHeight = min(ReplyMarkdown.height(display, width: textWidthAvailable), max(60, maximumHeight))
         updateHostingWidth?(desiredWidth)
         responseHostingView.layoutSubtreeIfNeeded()
-        let fittingSize = responseHostingView.fittingSize
         let newWidth = desiredWidth
-        let newHeight = max(ceil(fittingSize.height), 34)
+        // Explicit TextKit height prevents NSTextView's stale intrinsic size clipping content.
+        let newHeight = overlayViewModel.textHeight + 42
 
         // Keep the panel origin relative to the cursor (the timer handles that),
         // but update the frame size so the content fits.
@@ -271,9 +289,10 @@ private struct CompanionResponseOverlayView: View {
 
     var body: some View {
         if viewModel.isShowingResponse {
+            VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
-                FormattedReplyText(text: viewModel.streamingResponseText.isEmpty ? "..." : viewModel.streamingResponseText)
-                    .frame(maxWidth: 320, alignment: .leading)
+                FormattedReplyText(text: viewModel.displayedText.isEmpty ? "..." : viewModel.displayedText, width: viewModel.textWidth)
+                    .frame(width: viewModel.textWidth, height: viewModel.textHeight)
                 Button {
                     viewModel.companion?.dismissCoachingOverlays()
                 } label: {
@@ -285,6 +304,14 @@ private struct CompanionResponseOverlayView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("Dismiss coaching reply")
                 .help("Dismiss reply and highlights (Esc)")
+            }
+            HStack {
+                Text(viewModel.showsFullReply ? "Full reply" : (viewModel.presentation.hasSummary ? "Quick reply" : "Preview"))
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                Spacer()
+                Button(viewModel.showsFullReply ? "Compact" : "Full reply") { viewModel.onToggle?() }
+                    .font(.system(size: 11)).buttonStyle(.plain)
+            }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)

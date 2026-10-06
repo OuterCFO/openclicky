@@ -247,7 +247,8 @@ final class CodexSharedSessionClient {
     }
 
     private static func displayHint(images: [(data: Data, label: String)]) -> String {
-        guard !images.isEmpty else { return "" }
-        return "\n\n[OpenClicky display hint: screenshots are attached to this same conversation. For a relevant visible target, include [POINT:x,y:label] with x/y as screenshot pixels. Do not invent actions or targets. Screens: " + images.map(\.label).joined(separator: "; ") + "]"
+        let compactHint = "\n\n[Cursor presentation: keep your full response as detailed as useful. Also append a self-contained <cursor_reply>short Markdown answer</cursor_reply> for the small cursor bubble. Use 1-3 short sentences or steps, roughly 60 words maximum. Keep necessary commands, paths, and cautions exact. This is a display summary, not a replacement for the full answer.]"
+        guard !images.isEmpty else { return compactHint }
+        return "\n\n[OpenClicky display hint: screenshots are attached to this same conversation. For a relevant visible target, include [POINT:x,y:label] with x/y as screenshot pixels. Do not invent actions or targets. Screens: " + images.map(\.label).joined(separator: "; ") + "]" + compactHint
     }
 }

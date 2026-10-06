@@ -66,5 +66,10 @@ The above live tests remain user-led.
 
 The pointer reply preserves bold, italics, inline code, links, strikethrough, and paragraph breaks.
 Explicit `==highlighted text==` uses a yellow background; Markdown emphasis inside a highlight is preserved.
-The reply grows with the rendered text instead of cutting off at 260 characters.
+The reply uses measured native text height and grows with the rendered text.
+Long replies scroll within a bounded panel rather than being clipped.
+Compact mode is the default, with a Full reply toggle.
+Connected sessions are asked to append a short `<cursor_reply>` summary while retaining their detailed answer.
+When no summary is supplied, the bubble labels its first-paragraph and command excerpt as Preview.
+The full response remains in the original session and can be viewed in the expanded bubble.
 Formatting is rendered locally and does not change the connected conversation or model.

@@ -4,8 +4,13 @@ import SwiftUI
 /// Native rich text keeps emphasis and highlights while wrapping at the bubble width.
 struct FormattedReplyText: NSViewRepresentable {
     let text: String
+    let width: CGFloat
 
-    func makeNSView(context: Context) -> NSTextView {
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
         let view = NSTextView()
         view.isEditable = false
         view.isSelectable = true
@@ -15,23 +20,34 @@ struct FormattedReplyText: NSViewRepresentable {
         view.textContainer?.widthTracksTextView = true
         view.isHorizontallyResizable = false
         view.isVerticallyResizable = true
-        return view
+        view.autoresizingMask = [.width]
+        scroll.documentView = view
+        return scroll
     }
 
-    func updateNSView(_ view: NSTextView, context: Context) {
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let view = scroll.documentView as? NSTextView else { return }
         view.textStorage?.setAttributedString(ReplyMarkdown.render(text))
+        let width = max(1, width - 15)
+        view.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        view.frame.size = NSSize(width: width, height: ReplyMarkdown.height(text, width: width))
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextView, context: Context) -> CGSize? {
-        let width = max(1, proposal.width ?? 280)
-        nsView.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
-        guard let container = nsView.textContainer, let layout = nsView.layoutManager else { return nil }
-        layout.ensureLayout(for: container)
-        return CGSize(width: width, height: ceil(layout.usedRect(for: container).height))
-    }
 }
 
 nonisolated enum ReplyMarkdown {
+    /// Use the same TextKit wrapping as the visible text, independent of host fittingSize.
+    static func height(_ text: String, width: CGFloat) -> CGFloat {
+        let storage = NSTextStorage(attributedString: render(text))
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: max(1, width), height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+        layout.ensureLayout(for: container)
+        return max(18, ceil(layout.usedRect(for: container).height) + 2)
+    }
+
     static func render(_ source: String) -> NSAttributedString {
         let parsed = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
         let output = NSMutableAttributedString()
@@ -71,5 +87,41 @@ nonisolated enum ReplyMarkdown {
             }
         }
         return output
+    }
+}
+
+/// Presentation only: the session's canonical response is never shortened or rewritten.
+nonisolated struct CursorReplyPresentation {
+    let full: String
+    let compact: String
+    let hasSummary: Bool
+
+    init(_ source: String) {
+        let opening = "<cursor_reply>"
+        let closing = "</cursor_reply>"
+        if let start = source.range(of: opening) {
+            let tail = source[start.upperBound...]
+            let end = tail.range(of: closing)
+            let summary = String(tail[..<(end?.lowerBound ?? tail.endIndex)]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let before = String(source[..<start.lowerBound])
+            let after = end.map { String(source[$0.upperBound...]) } ?? ""
+            full = (before + after).trimmingCharacters(in: .whitespacesAndNewlines)
+            compact = summary.isEmpty ? Self.preview(full) : summary
+            hasSummary = !summary.isEmpty
+        } else {
+            full = source
+            compact = Self.preview(source)
+            hasSummary = false
+        }
+    }
+
+    private static func preview(_ source: String) -> String {
+        // Whole paragraphs preserve Markdown; include the first command when present.
+        let blocks = source.components(separatedBy: "\n\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard let first = blocks.first else { return source }
+        if let command = blocks.dropFirst().first(where: { $0.contains("```") }), first.count < 400 {
+            return first + "\n\n" + command
+        }
+        return first
     }
 }
