@@ -50,6 +50,12 @@ func expect(_ cond: @autoclosure () -> Bool, _ msg: String) {
     }
 }
 
+// --- Requested defaults ---
+expect(OpenClickyModelCatalog.defaultCodexActionsModelID == "gpt-6-luna", "GPT-6 Luna default")
+expect(OpenClickyModelCatalog.voiceResponseModel(withID: "gpt-6-luna").id == "gpt-6-luna", "Luna response resolves")
+expect(OpenClickyModelCatalog.computerUseModels.contains { $0.id == "gpt-6-luna" }, "Luna computer-use option")
+expect(OpenClickyModelCatalog.codexActionsModels.contains { $0.id == "gpt-6-luna" }, "Luna agent option")
+
 // --- Catalog family mapping ---
 let apple = OpenClickyModelCatalog.voiceResponseModel(withID: OpenClickyModelCatalog.appleFoundationModelID)
 expect(apple.id == OpenClickyModelCatalog.appleFoundationModelID, "apple model id resolves")

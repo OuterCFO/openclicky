@@ -217,9 +217,8 @@ final class CodexVoiceSession {
                 // or enabling network access for model-invoked tools.
                 "sandboxPolicy": ["type": "readOnly", "networkAccess": false],
                 "model": model,
-                // Voice responses should prioritize first-token latency;
-                // Agent Mode keeps the user-selected reasoning effort.
-                "effort": "low",
+                // Match the configured effort used by Agent Mode.
+                "effort": UserDefaults.standard.string(forKey: "clickyCodexReasoningEffort") ?? "medium",
                 "config": [
                     "approval_policy": "never",
                     "sandbox_mode": "read-only"

@@ -81,7 +81,7 @@ Enable only the features you intend to use.
 
 OpenClicky's Settings control its own response and agent models.
 Changing the selected model in the Codex desktop app does not change OpenClicky's preferences.
-New installs default to the Codex model `gpt-5.6-sol`, muted playback, and no idle observation.
+New installs default to the Codex model `gpt-6-luna` with medium reasoning effort, muted playback, and no idle observation.
 Existing local preferences are preserved.
 
 The default ChatGPT-backed route requires no OpenAI API key.

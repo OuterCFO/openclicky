@@ -96,7 +96,7 @@ nonisolated enum OpenClickyModelCatalog {
     /// background work to the configured Codex model.
     static let defaultVoiceResponseModelID = defaultCodexActionsModelID
     static let defaultAnthropicResponseModelID = "fable-5"
-    static let defaultCodexActionsModelID = "gpt-5.6-sol"
+    static let defaultCodexActionsModelID = "gpt-6-luna"
     /// On-device Apple Foundation Models (macOS 26+ / Apple Intelligence).
     static let appleFoundationModelID = "apple-foundation"
     /// Text/vision model used when a live speech model needs screenshots,
@@ -127,6 +127,7 @@ nonisolated enum OpenClickyModelCatalog {
         OpenClickyModelOption(id: "fable-5", label: "Fable 5", provider: .anthropic, maxOutputTokens: 64_000),
         OpenClickyModelOption(id: "sonnet-5", label: "Sonnet 5", provider: .anthropic, maxOutputTokens: 64_000),
         OpenClickyModelOption(id: "opus-5", label: "Opus 5", provider: .anthropic, maxOutputTokens: 128_000),
+        OpenClickyModelOption(id: "gpt-6-luna", label: "GPT-6 Luna", provider: .openAI, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: .openAI, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: .openAI, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: .openAI, maxOutputTokens: 128_000)
@@ -152,12 +153,14 @@ nonisolated enum OpenClickyModelCatalog {
         OpenClickyModelOption(id: "opus-5", label: "Opus 5", provider: .anthropic, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-realtime-2.1-mini", label: "GPT Realtime 2.1 mini", provider: .openAI, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-realtime-2.1", label: "GPT Realtime 2.1", provider: .openAI, maxOutputTokens: 128_000),
+        OpenClickyModelOption(id: "gpt-6-luna", label: "GPT-6 Luna", provider: .codex, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: .codex, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: .codex, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: .codex, maxOutputTokens: 128_000)
     ]
 
     static let codexActionsModels: [OpenClickyModelOption] = [
+        OpenClickyModelOption(id: "gpt-6-luna", label: "GPT-6 Luna", provider: .openAI, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: .openAI, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: .openAI, maxOutputTokens: 128_000),
         OpenClickyModelOption(id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: .openAI, maxOutputTokens: 128_000)

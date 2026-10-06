@@ -16,11 +16,16 @@ It is independent of the commercial Clicky product and of OpenAI.
 - Answers appear beside the moving AI pointer, with optional screen highlights.
 - **Escape or ×** dismisses answers and highlights without deleting history.
 - No persistent fake-notch pill or side cursor dock.
-- The default response model is `gpt-5.6-sol` through Codex, playback is muted, and idle observation is off.
+- The default response model is `gpt-6-luna` with medium reasoning effort through Codex, playback is muted, and idle observation is off.
 
 The interface runs locally; AI inference on the default route runs remotely through your ChatGPT-backed Codex account.
 No local LLM is required.
 The code is free under the MIT license, but provider access, subscription limits, and Wispr's own service terms still apply.
+
+## Planned work
+
+[Bidirectional session connection](docs/ROADMAP.md): connect an active Codex session with its Cursor Task Manager conversation, preserving context and progress in both directions.
+This connection is not implemented yet.
 
 ## Get started
 
