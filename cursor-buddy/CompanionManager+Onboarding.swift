@@ -5,11 +5,11 @@
 
 @preconcurrency import AVFoundation
 import AppKit
+import ScreenCaptureKit
 import Combine
 import CoreAudio
 import Foundation
 import os
-import ScreenCaptureKit
 import SwiftUI
 import UniformTypeIdentifiers
 import OCCore
@@ -387,6 +387,68 @@ extension CompanionManager {
     }
 
     #if DEBUG
+    func debugCaptureTutorReview() {
+        Task { @MainActor in
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                guard let screen = NSScreen.main,
+                      let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+                      let display = content.displays.first(where: { $0.displayID == displayID.uint32Value }) else { return }
+                let ownPID = ProcessInfo.processInfo.processIdentifier
+                let windows = content.windows.filter {
+                    $0.owningApplication?.processID == ownPID ||
+                    ($0.owningApplication?.bundleIdentifier == "com.google.Chrome" && ($0.title?.hasPrefix("Example Domains") == true))
+                }
+                let config = SCStreamConfiguration()
+                config.width = Int(screen.frame.width * screen.backingScaleFactor)
+                config.height = Int(screen.frame.height * screen.backingScaleFactor)
+                config.showsCursor = true
+                let cgImage = try await SCScreenshotManager.captureImage(
+                    contentFilter: SCContentFilter(display: display, including: windows), configuration: config)
+                if let png = NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) {
+                    try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("OpenClicky-tutor-review.png"), options: .atomic)
+                }
+                OpenClickyMessageLogStore.shared.append(lane: "voice", direction: "internal", event: "tutor.presentation.review", fields: [
+                    "publicBackdropIncluded": windows.contains { $0.owningApplication?.bundleIdentifier == "com.google.Chrome" },
+                    "coachCursorCount": self.agentDockItems.filter { $0.title == "Workflow Coach" }.count,
+                    "historyEntries": self.homeChatEntries.count,
+                    "windows": NSApp.windows.filter(\.isVisible).map { "\($0.identifier?.rawValue ?? $0.title):\(NSStringFromRect($0.frame))" }.joined(separator: ";")
+                ])
+            } catch { print("Tutor presentation review failed: \(error.localizedDescription)") }
+        }
+    }
+
+    func debugPreviewSecondaryPointer() {
+        guard let screen = NSScreen.screen(containingOrNearestTo: NSEvent.mouseLocation) else { return }
+        let id = UUID()
+        cursorOverlayState.externalSecondaryCursors.append(OpenClickyExternalProxyCursor(
+            id: id,
+            screenLocation: CGPoint(x: screen.frame.midX, y: screen.frame.midY),
+            caption: "Clipped label regression preview",
+            accentHex: "#34D399"
+        ))
+        showCursorOverlayIfAvailable()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(750))
+            if let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) {
+                for nativeWindow in NSApp.windows where nativeWindow is OverlayWindow {
+                    guard let window = content.windows.first(where: { $0.windowID == CGWindowID(nativeWindow.windowNumber) }) else { continue }
+                    let configuration = SCStreamConfiguration()
+                    configuration.width = Int(nativeWindow.frame.width * nativeWindow.backingScaleFactor)
+                    configuration.height = Int(nativeWindow.frame.height * nativeWindow.backingScaleFactor)
+                    configuration.showsCursor = false
+                    if let image = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: configuration),
+                       let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) {
+                        let url = FileManager.default.temporaryDirectory.appendingPathComponent("OpenClicky-pointer-preview.png")
+                        try? png.write(to: url)
+                    }
+                }
+            }
+            try? await Task.sleep(for: .seconds(5))
+            self?.cursorOverlayState.externalSecondaryCursors.removeAll { $0.id == id }
+        }
+    }
+
     func debugTestCursorFlight() {
         ensureCursorOverlayVisibleForAgentTask()
         let screen = NSScreen.screen(containingOrNearestTo: NSEvent.mouseLocation)

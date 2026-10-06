@@ -131,6 +131,7 @@ final class MenuBarPanelManager: NSObject {
 
         guard let button = statusItem?.button else { return }
 
+        button.toolTip = "OpenClicky"
         button.image = makeClickyMenuBarIcon()
         button.image?.isTemplate = true
         button.action = #selector(statusItemClicked(_:))
@@ -273,6 +274,10 @@ final class MenuBarPanelManager: NSObject {
     }
 
     @objc private func quickAskOpenClickyFromStatusMenu() {
+        if OpenClickyPresentationPolicy.menuBarOnly {
+            companionManager.showTutorInput(startDictation: false)
+            return
+        }
         companionManager.showQuickTextInputFromMenuBar()
     }
 
@@ -293,6 +298,10 @@ final class MenuBarPanelManager: NSObject {
     }
 
     private func showMainInterfacePanel() {
+        if OpenClickyPresentationPolicy.menuBarOnly {
+            companionManager.showTutorInput(startDictation: false)
+            return
+        }
         hidePanel()
         companionManager.notchCaptureWindowManager.showMainInterfacePanel(companionManager: companionManager)
     }
@@ -768,6 +777,7 @@ final class AgentMenuBarStatusManager: NSObject {
         }
 
         guard let companionManager else { return }
+        if companionManager.showCompactConversationForAgentDockItem(itemID) { return }
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = true

@@ -136,6 +136,7 @@ private final class OpenClickyDynamicNotchKitModel: ObservableObject {
     @Published var draftAttachments: [URL] = []
     @Published var isDropTargeted = false
     @Published var isInputFocused = false
+    var isExplicitTextInputActive = false
     @Published var isNotchHovered = false
     @Published var isExpanded = false
     @Published var contextSuggestion: OpenClickyNotchContextSuggestion?
@@ -188,7 +189,7 @@ private final class OpenClickyDynamicNotchKitModel: ObservableObject {
     /// Collapse the notch only when the pointer has left it and the input is
     /// not being typed into — keeps the notch open while the user types.
     func closeNotchIfIdle() {
-        guard !isNotchHovered, !isInputFocused, !isDropTargeted else { return }
+        guard !isExplicitTextInputActive, !isNotchHovered, !isInputFocused, !isDropTargeted else { return }
         closeNotch()
     }
 
@@ -498,6 +499,7 @@ final class OpenClickyDynamicNotchKitBridge {
             guard let self else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                self.model.isExplicitTextInputActive = false
                 self.model.isExpanded = false
                 if self.model.hidesWhenClosed, !self.model.isDoingSomething {
                     Task {
@@ -610,7 +612,7 @@ final class OpenClickyDynamicNotchKitBridge {
         model.openMainPanel = openMainPanel
         model.submitText = submitText
         Task {
-            let shouldShowExpanded = opensExpanded || model.isInputFocused || model.hasDraftContent
+            let shouldShowExpanded = opensExpanded || model.isExplicitTextInputActive || model.isInputFocused || model.hasDraftContent
             if shouldShowExpanded {
                 model.isExpanded = true
                 await expandNotch(on: screen)
@@ -670,6 +672,7 @@ final class OpenClickyDynamicNotchKitBridge {
         focusesInput: Bool = true,
         onHiddenWhenClosed: (() -> Void)? = nil
     ) {
+        model.isExplicitTextInputActive = focusesInput
         model.hidesWhenClosed = hidesWhenClosed
         model.onHiddenWhenClosed = hidesWhenClosed ? onHiddenWhenClosed : nil
         model.contextSuggestion = nil
@@ -736,6 +739,7 @@ final class OpenClickyDynamicNotchKitBridge {
     }
 
     func close(on screen: NSScreen) {
+        model.isExplicitTextInputActive = false
         model.isExpanded = false
         Task { await compactNotch(on: screen) }
     }
@@ -748,6 +752,7 @@ final class OpenClickyDynamicNotchKitBridge {
     }
 
     func hide() {
+        model.isExplicitTextInputActive = false
         model.contextSuggestion = nil
         model.isExpanded = false
         Task { await hideNotchIfNeeded() }

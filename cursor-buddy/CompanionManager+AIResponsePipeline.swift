@@ -27,7 +27,7 @@ extension CompanionManager {
     /// the spinner/processing state until TTS audio begins playing.
     /// Claude's response may include a [POINT:x,y:label] tag which triggers
     /// the buddy to fly to that element on screen.
-    func sendTranscriptToClaudeWithScreenshot(transcript: String) {
+    func sendTranscriptToClaudeWithScreenshot(transcript: String, forceScreenContext: Bool = false) {
         rememberMainConversationUserPrompt(transcript, source: "voice_response")
         interruptCurrentVoiceResponse()
         let timing = activeRequestTiming
@@ -112,7 +112,7 @@ extension CompanionManager {
                 // visual context. Text-only turns should not pay the capture,
                 // base64, upload, and vision-processing latency tax.
                 let captureStartedAt = Date()
-                let shouldAttachScreenContext = circleHandoff != nil || Self.shouldAttachScreenContext(
+                let shouldAttachScreenContext = forceScreenContext || circleHandoff != nil || Self.shouldAttachScreenContext(
                     to: transcript,
                     recentConversationHistory: historyForAPI
                 )
@@ -1800,6 +1800,12 @@ extension CompanionManager {
             // Wait for pointing animation to finish (location is cleared
             // when the buddy flies back to the cursor)
             while detectedElementScreenLocation != nil {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard !Task.isCancelled else { return }
+            }
+
+            // A visible reply belongs to the AI pointer, so keep them together.
+            while responseOverlayManager.isVisible {
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 guard !Task.isCancelled else { return }
             }

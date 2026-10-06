@@ -1,0 +1,3 @@
+// Local signing belongs to each developer, never to the repository.
+OPENCLICKY_DEVELOPMENT_TEAM =
+#include? "Local.xcconfig"

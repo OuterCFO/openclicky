@@ -169,7 +169,7 @@ struct CodexAgentScreenContext: Equatable {
             "OpenClicky screen context:",
             "- Source: \(source)",
             "- Captured at: \(ISO8601DateFormatter().string(from: capturedAt))",
-            "- Screenshot files are saved locally as task context. Inspect them if your runtime exposes image/file viewing; otherwise be explicit that screenshot inspection is unavailable.",
+            "- Screenshots are attached as localImage inputs. Inspect them directly; the local paths are reference metadata, not a requirement to launch an image viewer.",
             "- Treat these screenshots as visual reference material for the task, not as files the user is asking you to find or show back to them."
         ]
 
@@ -645,7 +645,7 @@ final class CodexAgentSession: ObservableObject, Identifiable, BrowserWorkspaceA
                     screenContext: screenContext,
                     coordinationNote: coordinationNote
                 )
-                await self.runPrompt(modelPrompt, generation: generation)
+                await self.runPrompt(modelPrompt, generation: generation, screenContext: screenContext)
             } catch is CancellationError {
                 await OpenClickyAgentFileLeaseCoordinator.shared.releaseLeases(for: sessionID)
             } catch {
@@ -707,7 +707,7 @@ final class CodexAgentSession: ObservableObject, Identifiable, BrowserWorkspaceA
         Task { await OpenClickyAgentFileLeaseCoordinator.shared.releaseLeases(for: id) }
     }
 
-    private func runPrompt(_ prompt: String, generation: UInt64, didRetryCompatibilityFallback: Bool = false) async {
+    private func runPrompt(_ prompt: String, generation: UInt64, screenContext: CodexAgentScreenContext? = nil, didRetryCompatibilityFallback: Bool = false) async {
         do {
             try requireCurrentRun(generation)
             try await ensureThread(for: generation)
@@ -726,13 +726,17 @@ final class CodexAgentSession: ObservableObject, Identifiable, BrowserWorkspaceA
             }
 
             try requireCurrentRun(generation)
+            var input: [[String: Any]] = [[
+                "type": "text",
+                "text": prompt,
+                "text_elements": []
+            ]]
+            input.append(contentsOf: (screenContext?.attachments ?? []).map { attachment in
+                ["type": "localImage", "path": attachment.fileURL.path]
+            })
             _ = try await processManager.sendRequest(method: "turn/start", params: [
                 "threadId": activeThreadID,
-                "input": [[
-                    "type": "text",
-                    "text": prompt,
-                    "text_elements": []
-                ]],
+                "input": input,
                 "cwd": workingDirectoryPath,
                 "approvalPolicy": executionApprovalPolicy,
                 "sandbox": executionSandboxMode,
@@ -763,7 +767,7 @@ final class CodexAgentSession: ObservableObject, Identifiable, BrowserWorkspaceA
                 ))
                 applyModel(Self.codexRuntimeCompatibilityFallbackModel)
                 restartProcessForCompatibilityFallback()
-                await runPrompt(prompt, generation: generation, didRetryCompatibilityFallback: true)
+                await runPrompt(prompt, generation: generation, screenContext: screenContext, didRetryCompatibilityFallback: true)
                 return
             }
 

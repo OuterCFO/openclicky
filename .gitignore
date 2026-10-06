@@ -30,3 +30,13 @@ worker/.env.local
 .mcp.json
 /.antigravitycli
 /cascade
+
+# Per-developer signing and private runtime state
+/Config/Local.xcconfig
+**/auth.json
+*.pem
+*.p12
+*.mobileprovision
+
+__pycache__/
+*.pyc

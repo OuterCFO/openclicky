@@ -57,6 +57,8 @@ private struct OpenClickyPendingVisualGuidanceCalibrationAnchor {
 
 @MainActor
 final class CursorOverlayState: ObservableObject {
+    // Actual rendered AI pointer position, not the system mouse position.
+    var aiPointerScreenLocation: CGPoint?
     @Published var voiceState: CompanionVoiceState = .idle
     @Published var currentAudioPowerLevel: CGFloat = 0
     @Published var detectedElementScreenLocation: CGPoint?
@@ -612,7 +614,7 @@ final class CompanionManager: ObservableObject {
     let wikiViewerPanelManager = WikiViewerPanelManager()
     @Published private(set) var bundledKnowledgeIndex = OCCore.WikiManager.Index.empty
     @Published var latestVoiceResponseCard: ClickyResponseCard?
-    @Published private(set) var homeChatEntries: [CodexTranscriptEntry] = []
+    @Published private(set) var homeChatEntries: [CodexTranscriptEntry] = CompanionManager.loadTutorChatEntries()
     @Published private(set) var isHomeChatModeActive = false
     @Published var handoffQueue: [HandoffQueuedRegionScreenshot] = []
     /// Sealed circle-while-talking stroke from the most recent PTT hold, awaiting voice/agent attach.
@@ -630,6 +632,7 @@ final class CompanionManager: ObservableObject {
     /// Caption text still mirrors onto the full-screen cursor overlay when
     /// voice-response captions are enabled; this panel is the interactive path.
     let responseOverlayManager = CompanionResponseOverlayManager()
+    private let tutorDockItemID = UUID(uuidString: "039BB5B3-6D99-481C-80E4-FC4B5AF86A43")!
 
     /// Anthropic API key for direct Claude requests.
     /// Environment fallback supports Xcode schemes and local launch scripts.
@@ -640,7 +643,7 @@ final class CompanionManager: ObservableObject {
     private static let tutorModeDefaultsKey = "isTutorModeEnabled"
 
     private static func initialTutorModeEnabled() -> Bool {
-        UserDefaults.standard.object(forKey: tutorModeDefaultsKey) as? Bool ?? true
+        UserDefaults.standard.object(forKey: tutorModeDefaultsKey) as? Bool ?? false
     }
 
     lazy var claudeAPI: ClaudeAPI = {
@@ -1031,7 +1034,31 @@ final class CompanionManager: ObservableObject {
 
     /// Conversation history so Claude remembers prior exchanges within a session.
     /// Each entry is the user's transcript and Claude's response.
-    var conversationHistory: [(userTranscript: String, assistantResponse: String)] = []
+    private static func loadTutorChatEntries() -> [CodexTranscriptEntry] {
+        guard let data = UserDefaults.standard.data(forKey: "openclicky.tutorChatHistory"),
+              let entries = try? JSONDecoder().decode([CodexTranscriptEntry].self, from: data) else { return [] }
+        var uniqueEntries: [CodexTranscriptEntry] = []
+        for entry in entries {
+            if let last = uniqueEntries.last, last.role == entry.role, last.text == entry.text { continue }
+            uniqueEntries.append(entry)
+        }
+        return Array(uniqueEntries.suffix(24))
+    }
+
+    private static func restoredTutorExchanges() -> [(userTranscript: String, assistantResponse: String)] {
+        var exchanges: [(userTranscript: String, assistantResponse: String)] = []
+        var prompt: String?
+        for entry in loadTutorChatEntries() {
+            if entry.role == .user { prompt = entry.text }
+            if entry.role == .assistant, let user = prompt {
+                exchanges.append((userTranscript: user, assistantResponse: entry.text))
+                prompt = nil
+            }
+        }
+        return exchanges
+    }
+
+    var conversationHistory: [(userTranscript: String, assistantResponse: String)] = CompanionManager.restoredTutorExchanges()
     private var compactedVoiceConversationArchive: String?
     private static let activeVoiceConversationHistoryLimit = 8
     private static let compactedVoiceConversationArchiveCharacterLimit = 2_400
@@ -1095,13 +1122,15 @@ final class CompanionManager: ObservableObject {
         guard !trimmedText.isEmpty else { return }
         if let last = homeChatEntries.last,
            last.role == role,
-           SpokenText.normalizedSpokenCommandText(last.text) == SpokenText.normalizedSpokenCommandText(trimmedText),
-           Date().timeIntervalSince(last.createdAt) < 4 {
+           SpokenText.normalizedSpokenCommandText(last.text) == SpokenText.normalizedSpokenCommandText(trimmedText) {
             return
         }
         homeChatEntries.append(CodexTranscriptEntry(role: role, text: trimmedText))
         if homeChatEntries.count > 24 {
             homeChatEntries.removeFirst(homeChatEntries.count - 24)
+        }
+        if let data = try? JSONEncoder().encode(homeChatEntries) {
+            UserDefaults.standard.set(data, forKey: "openclicky.tutorChatHistory")
         }
     }
 
@@ -1131,6 +1160,12 @@ final class CompanionManager: ObservableObject {
 
         appendHomeChatEntry(role: .user, text: trimmedUserTranscript)
         appendHomeChatEntry(role: .assistant, text: trimmedAssistantResponse)
+        if let index = agentDockItems.firstIndex(where: { $0.id == tutorDockItemID }) {
+            agentDockItems[index].userInstruction = trimmedUserTranscript
+            agentDockItems[index].caption = trimmedAssistantResponse
+            agentDockItems[index].status = .done
+            agentDockItems[index].progressStageLabel = "Ready"
+        }
 
         conversationHistory.append((
             userTranscript: trimmedUserTranscript,
@@ -1503,6 +1538,7 @@ final class CompanionManager: ObservableObject {
     private static let processingWatchdogTimeout: TimeInterval = 30
 
     private var shortcutTransitionCancellable: AnyCancellable?
+    private var tutorDictationCancellable: AnyCancellable?
     private var shiftDoubleTapCancellable: AnyCancellable?
     private var escapeKeyCancellable: AnyCancellable?
     private var voiceStateCancellable: AnyCancellable?
@@ -1732,7 +1768,7 @@ final class CompanionManager: ObservableObject {
     }
 
     private func refreshAgentDockFollowBehavior() {
-        let shouldAutoFollowCursor = agentDockItems.contains { item in
+        let shouldAutoFollowCursor = !OpenClickyPresentationPolicy.menuBarOnly && agentDockItems.contains { item in
             item.status == .starting || item.status == .running
         }
         if shouldAutoFollowCursor {
@@ -2274,6 +2310,7 @@ final class CompanionManager: ObservableObject {
             startWakeWordListeningIfNeeded(reason: "startup")
         }
         bindAgentSessionObservation()
+        if runtimeMode == .menuBar, !homeChatEntries.isEmpty { ensureTutorDockItem() }
         startRelaunchableAgentAutoResumeChecks()
         if runtimeMode == .menuBar, !agentDockItems.isEmpty {
             showAgentDockWindowNearCurrentScreen()
@@ -2541,6 +2578,7 @@ final class CompanionManager: ObservableObject {
     }
 
     private func animateAgentSpawnProxyFromCursorToDock(accentTheme: ClickyAccentTheme, caption: String? = nil, dockItemID: UUID? = nil) {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { return }
         let startPoint = Self.clampedExternalCursorPoint(NSEvent.mouseLocation)
         let targetPoint = dockItemID
             .flatMap { agentDockWindowManager.dockIconCenter(for: $0, in: agentDockItems) }
@@ -3332,6 +3370,7 @@ final class CompanionManager: ObservableObject {
         agentProgressStageCancellables.removeAll()
         agentTitleCancellables.removeAll()
         shortcutTransitionCancellable?.cancel()
+        tutorDictationCancellable?.cancel()
         shiftDoubleTapCancellable?.cancel()
         escapeKeyCancellable?.cancel()
         stopTutorIdleObservation()
@@ -3617,6 +3656,10 @@ final class CompanionManager: ObservableObject {
     }
 
     private func bindShortcutTransitions() {
+        tutorDictationCancellable = globalPushToTalkShortcutMonitor.tutorDictationPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.showWisprTutorInput() }
+
         shortcutTransitionCancellable = globalPushToTalkShortcutMonitor
             .shortcutTransitionPublisher
             .receive(on: DispatchQueue.main)
@@ -4312,6 +4355,17 @@ final class CompanionManager: ObservableObject {
         return fields
     }
 
+    func dismissCoachingOverlays() {
+        interruptCurrentVoiceResponse()
+        // Suppress late chunks until a new question starts a fresh reply.
+        responseOverlayManager.dismissCurrentReply()
+        clearDetectedElementLocation()
+        visualGuidanceOverlayClearTasks.values.forEach { $0.cancel() }
+        visualGuidanceOverlayClearTasks.removeAll()
+        cursorOverlayState.visualGuidanceOverlays.removeAll()
+        latestVoiceResponseCard = nil
+    }
+
     private func handleEscapeKeyPressed() {
         let isVoiceActive = voiceTTSClient.isPlaying
             || openAIRealtimeSpeechClient.isPlaying
@@ -4320,22 +4374,9 @@ final class CompanionManager: ObservableObject {
             || voiceState == .processing
             || currentResponseTask != nil
             || realtimeBidirectionalVoiceTask != nil
-
-        guard isVoiceActive else { return }
-
-        OpenClickyMessageLogStore.shared.append(
-            lane: "voice",
-            direction: "incoming",
-            event: "voice.escape_stop_requested",
-            fields: [
-                "voiceState": voiceState.rawValue,
-                "ttsPlaying": voiceTTSClient.isPlaying,
-                "openAIRealtimePlaying": openAIRealtimeSpeechClient.isPlaying,
-                "deepgramVoiceAgentPlaying": deepgramVoiceAgentClient.isPlaying
-            ]
-        )
+        guard isVoiceActive || responseOverlayManager.isVisible || hasActiveOverlayAnnotation else { return }
         cancelCircleSelectSession(clearPending: true)
-        interruptCurrentVoiceResponse()
+        dismissCoachingOverlays()
     }
 
     private func handleShortcutTransition(_ transition: BuddyPushToTalkShortcut.ShortcutTransition) {
@@ -5548,7 +5589,7 @@ final class CompanionManager: ObservableObject {
         // Screen calibration is a voice visual-guidance flow, not Agent Mode.
         // Keep it in the screenshot-aware voice lane even when the user
         // phrases a retry as "get an agent to do a screen calibration."
-        if Self.isScreenCalibrationRequest(transcript) {
+        if ScreenTutorRoutingPolicy.shouldStayInTutor(transcript) || Self.isScreenCalibrationRequest(transcript) {
             return false
         }
         if handleAgentSelectionRequestIfNeeded(from: transcript, source: selectionSource) {
@@ -8635,7 +8676,10 @@ final class CompanionManager: ObservableObject {
     }
 
     func showQuickTextInputFromMenuBar() {
-        showNotchTextInput { [weak self] submittedText in
+        guard hasAccessibilityPermission, hasScreenRecordingPermission else { return }
+        startPrewarmedScreenshotCaptureIfPossible()
+        NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+        notchCaptureWindowManager.showTextInput { [weak self] submittedText in
             self?.submitNewAgentTaskFromUI(submittedText, source: "menu_bar_quick_task_prompt")
         }
     }
@@ -8648,6 +8692,78 @@ final class CompanionManager: ObservableObject {
         NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
         notchCaptureWindowManager.showTextInput { [weak self] submittedText in
             self?.submitNewAgentTaskFromUI(submittedText, source: "notch_shortcut_task_prompt")
+        }
+    }
+
+    func showWisprTutorInput() {
+        showTutorInput(startDictation: true)
+    }
+
+    func submitTutorPrompt(_ text: String) {
+        ensureTutorDockItem()
+        submitTextModePrompt(text, allowsAgentRouting: false)
+    }
+
+    private func ensureTutorDockItem() {
+        if !agentDockItems.contains(where: { $0.id == tutorDockItemID }) {
+            agentDockItems.append(ClickyAgentDockItem(
+                id: tutorDockItemID, sessionID: nil, title: "OpenClicky",
+                userInstruction: homeChatEntries.last(where: { $0.role == .user })?.text ?? "Ask about your screen",
+                accentTheme: .mint, status: .done, progressStageLabel: "Ready",
+                progressStepText: nil, activityStatusLines: [],
+                caption: homeChatEntries.last(where: { $0.role == .assistant })?.text,
+                suggestedNextActions: [], createdAt: Date()
+            ))
+        }
+        showAgentDockWindowNearCurrentScreen()
+        scheduleWidgetSnapshotPublish()
+    }
+
+    private var compactInputAgentSessionID: UUID?
+
+    func showTutorConversation() {
+        compactInputAgentSessionID = nil
+        ensureTutorDockItem()
+        notchCaptureWindowManager.showConversationInput(entries: homeChatEntries, historyVisible: true) { [weak self] text in
+            self?.submitTutorPrompt(text)
+        }
+    }
+
+    @discardableResult
+    func showCompactConversationForAgentDockItem(_ itemID: UUID) -> Bool {
+        if itemID == tutorDockItemID { showTutorConversation(); return true }
+        let sessionID = agentDockItems.first(where: { $0.id == itemID })?.sessionID ?? itemID
+        guard let session = codexAgentSessions.first(where: { $0.id == sessionID }) else { return false }
+        compactInputAgentSessionID = sessionID
+        notchCaptureWindowManager.showConversationInput(entries: session.entries, historyVisible: true, title: session.title) { [weak self] text in
+            self?.submitTextFollowUp(text, toAgentSessionID: sessionID)
+        }
+        return true
+    }
+
+    func showTutorInput(startDictation: Bool) {
+        guard hasAccessibilityPermission, hasScreenRecordingPermission else { return }
+        startPrewarmedScreenshotCaptureIfPossible()
+        ensureTutorDockItem()
+        NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+        if let sessionID = compactInputAgentSessionID,
+           let session = codexAgentSessions.first(where: { $0.id == sessionID }) {
+            notchCaptureWindowManager.showConversationInput(entries: session.entries, title: session.title) { [weak self] text in
+                self?.submitTextFollowUp(text, toAgentSessionID: sessionID)
+            }
+        } else {
+            compactInputAgentSessionID = nil
+            notchCaptureWindowManager.showConversationInput(entries: homeChatEntries) { [weak self] text in
+                self?.submitTutorPrompt(text)
+            }
+        }
+        guard startDictation else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard let url = URL(string: "wispr-flow://start-hands-free") else { return }
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = false
+            NSWorkspace.shared.open(url, configuration: configuration) { _, _ in }
         }
     }
 
@@ -8676,7 +8792,7 @@ final class CompanionManager: ObservableObject {
         submitTextModePrompt(submittedText)
     }
 
-    private func submitTextModePrompt(_ submittedText: String) {
+    private func submitTextModePrompt(_ submittedText: String, allowsAgentRouting: Bool = true) {
         let trimmedText = submittedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
 
@@ -8689,7 +8805,7 @@ final class CompanionManager: ObservableObject {
         interruptCurrentVoiceResponse()
         clearDetectedElementLocation()
 
-        if routeFinalVoiceTranscriptActionIfNeeded(
+        if allowsAgentRouting, routeFinalVoiceTranscriptActionIfNeeded(
             trimmedText,
             source: "text",
             selectionSource: "text_mode",
@@ -8699,7 +8815,7 @@ final class CompanionManager: ObservableObject {
             return
         }
 
-        sendTranscriptToClaudeWithScreenshot(transcript: trimmedText)
+        sendTranscriptToClaudeWithScreenshot(transcript: trimmedText, forceScreenContext: !allowsAgentRouting)
     }
 
     private func submitPendingAgentVoiceFollowUp(_ transcript: String) -> Bool {
@@ -14617,6 +14733,7 @@ final class CompanionManager: ObservableObject {
     }
 
     func openAgentDockItem(_ itemID: UUID) {
+        if showCompactConversationForAgentDockItem(itemID) { return }
         guard isAdvancedModeEnabled else {
             prepareVoiceFollowUpForAgentDockItem(itemID)
             return
@@ -14677,6 +14794,7 @@ final class CompanionManager: ObservableObject {
     }
 
     func prepareVoiceFollowUpForAgentDockItem(_ itemID: UUID) {
+        if itemID == tutorDockItemID { showTutorInput(startDictation: true); return }
         guard let sessionID = agentDockItems.first(where: { $0.id == itemID })?.sessionID else {
             prepareForVoiceFollowUp()
             return
@@ -14703,6 +14821,7 @@ final class CompanionManager: ObservableObject {
     }
 
     func showTextFollowUpForAgentDockItem(_ itemID: UUID) {
+        if itemID == tutorDockItemID { showTutorInput(startDictation: false); return }
         guard let sessionID = agentDockItems.first(where: { $0.id == itemID })?.sessionID else { return }
         showTextFollowUpForAgentSession(sessionID)
     }
@@ -15556,11 +15675,16 @@ final class CompanionManager: ObservableObject {
         }
     }
 
-    func updateVoiceResponseCaption(_ text: String, force: Bool = false) {
+    func updateVoiceResponseCaption(_ text: String, force: Bool = false, updatesDock: Bool = true) {
         // Interactive bubble always tracks spoken replies so the provider
         // selector is reachable without opening Settings.
         let caption = Self.voiceResponseCaptionText(from: text)
         if !caption.isEmpty {
+            showCursorOverlayIfAvailable()
+            if updatesDock, let index = agentDockItems.firstIndex(where: { $0.id == tutorDockItemID }) {
+                agentDockItems[index].caption = caption
+                agentMenuBarStatusManager.scheduleSync(companionManager: self)
+            }
             presentInteractiveResponseBubble(with: caption)
         }
 
@@ -15573,18 +15697,13 @@ final class CompanionManager: ObservableObject {
         cursorOverlayState.externalPrimaryCaptionAccentHex = nil
     }
 
-    /// Show/update the interactive provider bubble. Mid-stream updates cancel
-    /// any pending auto-hide; a fresh hold is scheduled after each update so
-    /// only inactivity (not an earlier chunk's timer) can dismiss it.
+    /// Update the manually dismissed reply beside the AI pointer.
     private func presentInteractiveResponseBubble(with caption: String) {
         responseOverlayManager.bind(companion: self)
         if !responseOverlayManager.isVisible {
             responseOverlayManager.showOverlayAndBeginStreaming(clearText: true)
         }
-        // updateStreamingText cancels any pending hide from prior chunks.
         responseOverlayManager.updateStreamingText(caption)
-        // Reschedule hold from this latest chunk only (cancel-before-schedule).
-        responseOverlayManager.finishStreaming(holdSeconds: ResponseOverlayAutoHidePolicy.defaultHoldSeconds)
     }
 
     /// Clears the cursor-following caption only. Does NOT dismiss the interactive

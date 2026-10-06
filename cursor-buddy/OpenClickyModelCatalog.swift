@@ -94,7 +94,7 @@ nonisolated enum OpenClickyModelCatalog {
     /// Fast conversational responder. Used for the always-on voice loop —
     /// hears the user, routes direct computer-use locally, and delegates
     /// background work to the configured Codex model.
-    static let defaultVoiceResponseModelID = defaultSpeechModelID
+    static let defaultVoiceResponseModelID = defaultCodexActionsModelID
     static let defaultAnthropicResponseModelID = "fable-5"
     static let defaultCodexActionsModelID = "gpt-5.6-sol"
     /// On-device Apple Foundation Models (macOS 26+ / Apple Intelligence).

@@ -1,288 +1,118 @@
 # OpenClicky
 
-OpenClicky is a native macOS menu-bar companion by Jason Kneen. It hosts Clicky, an AI companion that provides push-to-talk voice help, screen-aware responses, image gallery views, local agent work, and a cursor overlay for pointing at UI elements.
+**A screen-aware AI companion for your Mac.**
+Ask about what you are working on, get an answer beside an AI pointer, and keep using your app.
+Use it for navigation, troubleshooting, learning software, understanding unfamiliar interfaces, and ongoing computer work.
 
-OpenClicky uses local configuration only. There is no Google login requirement and no hosted key-sync flow.
+This public fork of [Jason Kneen's OpenClicky](https://github.com/jasonkneen/openclicky) adds a compact, no-notch workflow with Wispr Flow dictation and ChatGPT-backed Codex sessions.
+It is independent of the commercial Clicky product and of OpenAI.
 
-## Clicky At A Glance
+## What this fork changes
 
-Clicky currently handles:
+- **Command + Option** opens a focused input and starts Wispr Flow.
+- Multiline prompts wrap and grow; longer drafts scroll.
+- A task's menu bar icon opens its conversation history in the same panel.
+- Follow-ups stay with the selected session; separate tasks have separate transcripts.
+- Answers appear beside the moving AI pointer, with optional screen highlights.
+- **Escape or ×** dismisses answers and highlights without deleting history.
+- No persistent fake-notch pill or side cursor dock.
+- The default response model is `gpt-5.6-sol` through Codex, playback is muted, and idle observation is off.
 
-- fresh web search for facts and news
-- image gallery display for visual results
-- screen-aware guidance using `[POINT:x,y:label]` and `[TYPE:x,y:label]`
-- child workers and agent spawning for larger tasks
-- GitHub integration through Composio MCP
-- local shell and file work inside the configured projects root
-- frontend builds and previews
-- reports, PDFs, DOCX files, and spreadsheets
-- repo scaffolding and day-to-day dev work
-- native computer-use fallback when direct routes are not enough
-- optional yes/no Agent Mode confirmations through local Nodex AirPods head gestures
+The interface runs locally; AI inference on the default route runs remotely through your ChatGPT-backed Codex account.
+No local LLM is required.
+The code is free under the MIT license, but provider access, subscription limits, and Wispr's own service terms still apply.
 
-## Routing
+## Get started
 
-Clicky prefers structured routes over visible UI whenever possible:
-
-- use direct answers for simple questions
-- use web search for fresh information
-- use image gallery flows for visual content
-- spawn child workers for substantial builds, research, artifact work, connected-app actions, or multi-step GUI tasks
-- keep same-context work in `sessions_send` and start new work in `sessions_spawn`
-- prefer integration routes such as GitHub via Composio MCP before falling back to browser or window automation
-- use OpenClicky's computer-use path only as the last-mile fallback for native Mac or browser actions
-
-## Requirements
-
-- macOS 14.2 or newer
-- Xcode with the macOS SDK
-- A signing team configured in Xcode for local runs
-- Local API keys supplied outside the repository
-
-## Repository Layout
-
-- `cursor-buddy.xcodeproj` and `cursor-buddy/` contain the macOS app target.
-- `cursor-buddyTests/` contains focused app tests.
-- `cursor-buddyUITests/` contains UI test scaffolding.
-- `AppResources/OpenClicky/` contains bundled model instructions, skills, wiki seed, Codex runtime, and completion audio.
-- `appcast.xml`, `clicky-demo.gif`, and `dmg-background.png` support distribution and release packaging.
-- `docs/APP_UPDATES.md` documents the Sparkle update feed and direct-distribution release flow.
-
-The legacy `cursor-buddy` folder and scheme names are kept for project continuity. The product, bundle display name, and app identity are OpenClicky.
-
-## Secrets
-
-Do not commit API keys to this repository.
-
-OpenClicky can read local secrets from:
-
-- the in-app Settings fields
-- launch environment variables
-- a secrets file at `~/.config/openclicky/secrets.env`
-- a custom file path set with `OPENCLICKY_SECRETS_FILE`
-
-Supported values:
+This is a **source distribution**, not a notarized one-click installer.
+The current project targets **macOS 26 or later** and was built with **Xcode 27** on Apple Silicon.
+The runtime preparation script also supports Intel macOS archives; that hardware has not been validated for this fork.
 
 ```sh
-ANTHROPIC_API_KEY=your_anthropic_key
-ELEVENLABS_API_KEY=your_elevenlabs_key
-ELEVENLABS_VOICE_ID=your_elevenlabs_voice_id
-OPENAI_API_KEY=your_openai_or_codex_key
-```
-
-Google Workspace access is intentionally handled through local tooling, not OpenClicky-hosted Google login or key sync. See [Google Workspace via gogcli](#google-workspace-via-gogcli).
-
-Recommended local setup:
-
-```sh
-mkdir -p ~/.config/openclicky
-chmod 700 ~/.config/openclicky
-$EDITOR ~/.config/openclicky/secrets.env
-chmod 600 ~/.config/openclicky/secrets.env
-```
-
-The repo `.gitignore` excludes `.env` and `.env.local`, but the app no longer reads repo-local `.env` files. Keep secrets outside the project directory.
-
-## Build And Run
-
-Open the project in Xcode:
-
-```sh
+git clone https://github.com/OuterCFO/openclicky.git
+cd openclicky
+python3 scripts/prepare-codex-runtime.py
+cp Config/Local.xcconfig.example Config/Local.xcconfig
 open cursor-buddy.xcodeproj
 ```
 
-In Xcode:
+1. Put your own Apple development team ID in `Config/Local.xcconfig`.
+2. In Xcode, choose the `cursor-buddy` scheme and **My Mac**, then build.
+3. Copy the signed `OpenClicky.app` build product to `/Applications` and launch that copy.
+4. Sign in to Codex with your own ChatGPT account, or let OpenClicky's sign-in flow complete.
+5. Grant Screen Recording and Accessibility to the installed OpenClicky app.
+6. Install and sign in to [Wispr Flow](https://wisprflow.ai/) if you want the dictation shortcut.
 
-1. Select the `cursor-buddy` scheme.
-2. Select the OpenClicky app target.
-3. Set your signing team.
-4. Run the app with `Cmd+R`.
-5. Grant Accessibility, Microphone, and Screen Recording permissions when macOS asks.
+See [the complete setup guide](docs/SETUP.md), including sign-in, permissions, signing, and a first-use checklist.
+You can type instead of using Wispr.
 
-Do not use terminal `xcodebuild` for permission testing. macOS TCC permissions are tied to the signed app identity and install path, and throwaway command-line builds can cause permission loops.
+## Everyday use
 
-## Development Verification
+| Action | Result |
+| --- | --- |
+| Press and release Command + Option | Open input and start Wispr dictation |
+| Return or Send | Submit and close the input |
+| Shift + Return | Insert a newline |
+| History or a task menu bar icon | Review that conversation in the compact panel |
+| Escape or × | Close the input, or dismiss the current answer and highlights |
+| Tools → New OpenAI Task | Start a separate task with its own session |
 
-For a lightweight syntax check that does not disturb macOS permissions, run `swiftc -parse` over the changed source files. Avoid launching unsigned or temporary build products for permission testing.
+Try: “Explain this page and point at the settings button.”
+For a separate task, use the explicit new-task command rather than expecting every screen question to become background work.
 
-The external-control bridge can be checked with:
+## How it works
 
-```sh
-scripts/test-external-control-bridge.sh
-```
+Your prompt + requested screen snapshots + the current session's recent exchanges + OpenClicky's local instructions/memory are sent to the selected backend.
+OpenClicky renders the returned answer and pointing/highlight instructions on your desktop.
 
-The script performs Swift parse/typecheck checks, verifies the local bridge, exercises MCP descriptors, screenshot capture, captions, secondary cursors, SSE events, and confirms that primary cursor guidance uses OpenClicky's native choreography without warping the real system pointer.
+**Sharing your ChatGPT login does not import your other ChatGPT or Codex chats.**
+OpenClicky has its own context and sessions.
+Its account, provider, context, and execution boundaries are explained in [the architecture guide](docs/ARCHITECTURE.md).
+An [interactive visual explainer](docs/interactive/OpenClicky-explained.html) is included; download it and open it locally.
+That explainer describes the inspected development setup, not every future user's configuration.
 
-Optional hands-free Agent Mode confirmations through AirPods head gestures are documented in [docs/NODEX_HEAD_GESTURES.md](docs/NODEX_HEAD_GESTURES.md).
+The app includes OpenAI/Codex, Claude, Apple, and other upstream adapters.
+This fork's verified setup uses ChatGPT-backed Codex.
+Other providers need their own access and are not covered by a ChatGPT subscription.
+Screen guidance requires a backend capable of understanding the supplied images.
 
-## External Control Bridge
+## Privacy and authority
 
-OpenClicky exposes a local-only control bridge for agents and other trusted local apps:
+Screen content and prompts are sent to the selected model service.
+Wispr handles dictation separately.
+Local conversation, memory, logs, and screenshot files can contain private information.
+Explicit agent tasks can have broader tool access than the screen-answer path.
+Read [SECURITY.md](SECURITY.md) before enabling optional automation or exposing the local control bridge.
+No personal credentials, history, screen captures, or development runtime binaries belong in this repository.
 
-```text
-http://127.0.0.1:32123
-```
+## Development and project structure
 
-The bridge is intentionally non-invasive. It drives OpenClicky's overlay, screenshots, and TTS, but does not start dictation, submit prompts, create new agent sessions, or mutate the normal OpenClicky conversation state.
-
-Useful endpoints:
-
-- `GET /health` checks bridge status.
-- `GET /mcp/tools` lists MCP-style tool descriptors.
-- `POST /cursor` points with the primary OpenClicky cursor, or creates one secondary marker with `mode: "secondary"`.
-- `POST /cursors` shows multiple temporary secondary markers at once.
-- `POST /caption` shows a short caption near a coordinate or the current cursor.
-- `POST /screenshot` captures local screenshots with display-frame metadata for locating UI.
-- `POST /speak` speaks through OpenClicky's TTS without entering voice mode.
-- `POST /clear` clears bridge-created overlay elements.
-- `GET /events` streams server-sent bridge events.
-
-Primary cursor behavior matters: default `/cursor` uses OpenClicky's existing smooth pointing choreography, the same behavior used by voice prompts like "show me the Apple menu". The OpenClicky triangle zips to the target, shows the caption, and returns to the real pointer. It should not warp the macOS pointer and should not draw a duplicate primary cursor.
-
-Secondary cursors are explicit temporary markers. Use them for multi-point explanations, alternatives, or screen-tour overlays. They automatically disappear after `durationMs` or can be cleared with `/clear`.
-
-Example primary pointer cue:
-
-```sh
-curl -s -X POST http://127.0.0.1:32123/cursor \
-  -H 'Content-Type: application/json' \
-  -d '{"x":640,"y":520,"caption":"Click this menu","durationMs":4500}'
-```
-
-Example simultaneous multi-marker cue:
-
-```sh
-curl -s -X POST http://127.0.0.1:32123/cursors \
-  -H 'Content-Type: application/json' \
-  -d '{"durationMs":4500,"cursors":[{"x":640,"y":520,"caption":"Editor","accentHex":"#60A5FA"},{"x":900,"y":520,"caption":"Logs","accentHex":"#F59E0B"}]}'
-```
-
-Example screenshot-to-pointer workflow:
+| Location | Purpose |
+| --- | --- |
+| `cursor-buddy/` | Native macOS application |
+| `Packages/` | Local Swift modules |
+| `cursor-buddyTests/` | App regression tests |
+| `AppResources/OpenClicky/` | Bundled instructions, skills, and upstream resources |
+| `scripts/prepare-codex-runtime.py` | Download and verify the pinned official Codex runtime |
+| `scripts/run-source-checks.sh` | Non-invasive source and regression checks |
+| `Config/` | Shared configuration and ignored local signing overrides |
+| `docs/` | Setup, architecture, troubleshooting, and project evidence |
 
 ```sh
-curl -s -X POST http://127.0.0.1:32123/screenshot \
-  -H 'Content-Type: application/json' \
-  -d '{"focused":false}'
-
-curl -s -X POST http://127.0.0.1:32123/cursor \
-  -H 'Content-Type: application/json' \
-  -d '{"x":1180,"y":760,"caption":"Use this button"}'
+scripts/run-source-checks.sh
 ```
 
-Bundled agent skills for this bridge live in `AppResources/OpenClicky/OpenClickyBundledSkills/`:
+Build and run the native application in Xcode.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for checks and review requirements.
+The repository retains the legacy `cursor-buddy` target/folder names for compatibility.
 
-- `google-workspace-gogcli`: local Google Workspace access through `gogcli` for Gmail, Calendar, Drive, Docs, Sheets, Slides, Chat, Contacts, Tasks, Admin, Groups, and related Google services.
-- `openclicky-screen-control`: quick point, caption, screenshot, speak, and clear commands.
-- `openclicky-screen-tour`: recordable visual tours with multiple simultaneous markers, area-focused overlays, speech, and primary cursor choreography.
+## Status and attribution
 
-## Google Workspace via gogcli
+The app has compiled and run in the maintainer's setup.
+The newest adaptive prompt/history UI still requires live user acceptance testing; successful compilation is not a visual sign-off.
+Provider alternatives, Intel hardware, and a fresh independent user's full setup have not yet been certified.
+Known limitations and test steps are recorded in [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
-OpenClicky can connect agents to Google Workspace through the local [`gogcli`](https://github.com/steipete/gogcli) command, installed as `gog`. This keeps Google authentication local to the user's machine and avoids adding hosted OAuth, Google login, or cloud key sync to OpenClicky.
-
-If gogcli uses the encrypted file keyring, OpenClicky agents need the same keyring password non-interactively. Put it in `~/.config/openclicky/secrets.env` as `GOG_KEYRING_PASSWORD=...`, or migrate gogcli to the macOS Keychain backend. If Google's OAuth screen says "Clicky", that branding comes from the local OAuth client stored in `~/Library/Application Support/gogcli/credentials.json`; replace it with an OpenClicky-owned Desktop OAuth client to change the consent-screen app name.
-
-Install on macOS:
-
-```sh
-brew install gogcli
-```
-
-Check status from OpenClicky Settings → Google, or from the terminal:
-
-```sh
-scripts/check-gogcli-workspace.sh
-```
-
-Or manually:
-
-```sh
-gog --version
-gog auth status --json
-gog auth list
-```
-
-Initial setup requires a Google Cloud Desktop OAuth client JSON owned by the user or their Workspace organization. Store it in gogcli, not in this repository:
-
-```sh
-gog auth credentials ~/Downloads/client_secret_....json
-```
-
-Authorize with least-privilege scopes for the services needed:
-
-```sh
-# Read-only Gmail + Drive example
-gog auth add you@example.com --services gmail,drive --gmail-scope readonly --drive-scope readonly
-
-# Calendar + Tasks read-only example
-gog auth add you@example.com --services calendar,tasks --readonly
-```
-
-For Workspace-specific clients/domains:
-
-```sh
-gog --client work auth credentials ~/Downloads/work-client.json --domain example.com
-gog auth alias set work you@example.com
-```
-
-Common read commands:
-
-```sh
-gog gmail search 'newer_than:7d' --account work --json
-gog calendar events --account work --json
-gog drive search "name contains 'proposal'" --account work --json
-gog contacts search 'Jane Doe' --account work --json
-```
-
-Write actions such as sending email, posting Chat messages, modifying Drive files, changing calendar events, contacts, groups, or admin state should only run after explicit user intent. The bundled `google-workspace-gogcli` skill documents safe usage patterns for agents.
-
-## Swift SDK Embedding (Windowed)
-
-For Swift hosts that want an in-window OpenClicky instance that is separate from the OS-level menu-bar companion, use `OpenClickySDKSession` from `cursor-buddy/OpenClickySDK.swift`.
-
-Example:
-
-```swift
-import SwiftUI
-
-let sdk = OpenClickySDKSession(mode: .embeddedWindow)
-
-// In app startup
-sdk.start()
-
-// In SwiftUI
-var body: some View {
-    sdk.makePanelView(actions: .init(
-        onPanelDismiss: { /* dismiss host panel */ },
-        onQuit: { /* close host window if needed */ }
-    ))
-}
-
-// Send input
-sdk.submitTextPrompt("Summarize this page")
-```
-
-The host can either use SDK actions for Settings/HUD/Memory, or keep them no-op and route that experience separately.
-
-See [OpenClicky SDK Integration Guide](docs/OpenClickySDKIntegration.md) for step-by-step host app integration instructions.
-
-## Direct Updates
-
-OpenClicky uses Sparkle for direct-distribution OTA updates. Installed builds check the signed `appcast.xml` feed from this repository's `main` branch, then download and install signed release DMGs from GitHub Releases. See [docs/APP_UPDATES.md](docs/APP_UPDATES.md) for the release checklist and appcast item template.
-
-## Credits And Upstream Work
-
-OpenClicky is maintained by [Jason Kneen](https://github.com/jasonkneen).
-
-This project builds on the original open-source Clicky work:
-
-- Original project: [farzaa/clicky](https://github.com/farzaa/clicky)
-- Original creator: Farza, GitHub [@farzaa](https://github.com/farzaa), X [@FarzaTV](https://x.com/farzatv)
-
-OpenClicky has also incorporated ideas and implementation patterns from these forks:
-
-- [@danpeg](https://github.com/danpeg)'s [danpeg/clicky](https://github.com/danpeg/clicky), reviewed locally as `clicky-teach`, for tutor-mode direction and idle observation behavior.
-- [@milind-soni](https://github.com/milind-soni)'s [milind-soni/tiptour-macos](https://github.com/milind-soni/tiptour-macos), for developer-menu/debug tooling patterns and related teaching-assistant UX ideas.
-
-## License
-
-MIT. Copyright 2026 Jason Kneen. Portions are derived from or informed by the upstream MIT-licensed projects credited above.
+Original OpenClicky is by **Jason Kneen**, under the [MIT license](LICENSE).
+This fork is maintained by **OuterCFO**.
+Third-party components retain their own licenses; see [NOTICE.md](NOTICE.md).

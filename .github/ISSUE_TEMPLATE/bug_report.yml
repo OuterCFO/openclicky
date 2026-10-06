@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible app or setup problem.
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private screenshots, or conversation logs.
+  - type: input
+    id: environment
+    attributes:
+      label: macOS version, hardware, Xcode version, and commit
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps and expected versus actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks performed or sanitized error message

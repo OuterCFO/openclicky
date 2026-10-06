@@ -2,15 +2,16 @@
 //  CompanionResponseOverlay.swift
 //  cursor-buddy
 //
-//  Cursor-following overlay that displays streaming AI response text plus a
-//  compact Apple / Codex / Claude provider selector. Uses a non-activating
-//  NSPanel so it floats without stealing focus. Mouse events are enabled so
-//  the selector chips remain tappable; the panel is small and near the cursor.
+//  Streaming reply beside the AI pointer, dismissed manually with Esc or ×.
+//  A non-activating panel keeps the underlying app in focus.
 //
 
 import AppKit
 import Combine
 import SwiftUI
+#if DEBUG
+import ScreenCaptureKit
+#endif
 
 // MARK: - View Model
 
@@ -18,7 +19,7 @@ import SwiftUI
 final class CompanionResponseOverlayViewModel: ObservableObject {
     @Published var streamingResponseText: String = ""
     @Published var isShowingResponse: Bool = false
-    @Published var providerFamily: OpenClickyVoiceBackendFamily?
+    @Published var isHovered = false
     weak var companion: CompanionManager?
 }
 
@@ -28,65 +29,69 @@ final class CompanionResponseOverlayViewModel: ObservableObject {
 final class CompanionResponseOverlayManager {
     private let overlayViewModel = CompanionResponseOverlayViewModel()
     private var overlayPanel: NSPanel?
+    private var responseHostingView: NSView?
+    private var updateHostingWidth: ((CGFloat) -> Void)?
+    #if DEBUG
+    private var debugAnchorSamplesRemaining = 0
+    private var debugLastAnchorSampleAt: TimeInterval = 0
+    #endif
     private var cursorTrackingTimer: Timer?
     private var lastCursorTrackingOrigin: NSPoint?
-    private var autoHideWorkItem: DispatchWorkItem?
-    /// Pure cancel-before-reschedule policy — same type unit tests drive.
-    private var autoHidePolicy = ResponseOverlayAutoHidePolicy()
-    /// True while the panel is ordered in (including the post-stream hold).
+    private var visibilityPolicy = ReplyVisibilityPolicy()
+    /// True until dismissal or replacement by a new question.
     private(set) var isVisible: Bool = false
-    /// Optional callback when the bubble fully hides (auto-fade or explicit).
+    /// Optional callback when the bubble hides.
     var onHidden: (() -> Void)?
 
-    /// The horizontal offset from the cursor to the left edge of the overlay panel.
-    private let cursorOffsetX: CGFloat = 22
-    /// The vertical offset from the cursor downward to the top edge of the overlay panel.
-    private let cursorOffsetY: CGFloat = 6
     /// Maximum width of the overlay panel.
     private let overlayMaxWidth: CGFloat = 360
 
     func bind(companion: CompanionManager) {
         overlayViewModel.companion = companion
-        overlayViewModel.providerFamily = companion.selectedVoiceBackendFamily
     }
 
     func showOverlayAndBeginStreaming(clearText: Bool = true) {
-        cancelPendingAutoHide()
+        guard visibilityPolicy.canPresent else { return }
 
         if clearText {
             overlayViewModel.streamingResponseText = ""
         }
+        overlayViewModel.isHovered = false
         overlayViewModel.isShowingResponse = true
-        if let companion = overlayViewModel.companion {
-            overlayViewModel.providerFamily = companion.selectedVoiceBackendFamily
-        }
         createOverlayPanelIfNeeded()
         startCursorTracking()
         isVisible = true
-        overlayPanel?.alphaValue = 1
+        #if DEBUG
+        debugAnchorSamplesRemaining = 12
+        #endif
+        overlayPanel?.alphaValue = overlayViewModel.companion?.cursorOverlayState.aiPointerScreenLocation == nil ? 0 : 1
+        repositionPanelNearCursor()
         overlayPanel?.orderFrontRegardless()
     }
 
     func updateStreamingText(_ accumulatedText: String) {
-        // Mid-stream updates must cancel any pending auto-hide so an earlier
-        // chunk's timer cannot fade the bubble while text is still arriving.
-        cancelPendingAutoHide()
+        guard visibilityPolicy.canPresent else { return }
         overlayViewModel.streamingResponseText = accumulatedText
-        if let companion = overlayViewModel.companion {
-            overlayViewModel.providerFamily = companion.selectedVoiceBackendFamily
-        }
+        #if DEBUG
+        debugAnchorSamplesRemaining = 12
+        #endif
         resizePanelToFitContent()
+        // Published SwiftUI text may lay out on the next main-loop pass.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isVisible else { return }
+            self.resizePanelToFitContent()
+        }
     }
 
-    /// Schedule hide after `holdSeconds` of inactivity. Always cancels any
-    /// previous pending hide first so only the latest schedule can fire.
-    func finishStreaming(holdSeconds: TimeInterval = ResponseOverlayAutoHidePolicy.defaultHoldSeconds) {
-        scheduleAutoHide(after: holdSeconds)
+    func dismissCurrentReply() {
+        visibilityPolicy.dismiss()
+        hideOverlay(resetReply: false)
     }
 
-    func hideOverlay() {
-        cancelPendingAutoHide()
+    func hideOverlay(resetReply: Bool = true) {
+        if resetReply { visibilityPolicy.beginNewReply() }
         stopCursorTracking()
+        overlayViewModel.isHovered = false
         overlayViewModel.isShowingResponse = false
         overlayViewModel.streamingResponseText = ""
         overlayPanel?.orderOut(nil)
@@ -95,40 +100,6 @@ final class CompanionResponseOverlayManager {
         if wasVisible {
             onHidden?()
         }
-    }
-
-    /// Cancel a pending auto-hide without hiding. Used while streaming continues.
-    func cancelPendingAutoHide() {
-        autoHideWorkItem?.cancel()
-        autoHideWorkItem = nil
-        autoHidePolicy.cancel()
-    }
-
-    /// Test seam: generation from the shared auto-hide policy.
-    var autoHideGeneration: UInt64 { autoHidePolicy.generation }
-    /// Test seam: true while a non-cancelled hide work item is outstanding.
-    var hasPendingAutoHide: Bool {
-        guard let autoHideWorkItem else { return false }
-        return !autoHideWorkItem.isCancelled && autoHidePolicy.scheduledHideAt != nil
-    }
-
-    private func scheduleAutoHide(after holdSeconds: TimeInterval) {
-        // Drop any prior DispatchWorkItem first, then advance policy generation
-        // via schedule (which cancels-then-schedules).
-        autoHideWorkItem?.cancel()
-        autoHideWorkItem = nil
-        let now = Date().timeIntervalSinceReferenceDate
-        let generation = autoHidePolicy.schedule(now: now, holdSeconds: holdSeconds)
-        let hideWork = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            // Drop stale work items if a newer schedule/cancel happened.
-            guard self.autoHidePolicy.isCurrent(generation) else { return }
-            self.autoHideWorkItem = nil
-            self.autoHidePolicy.cancel()
-            self.fadeOutAndHide()
-        }
-        autoHideWorkItem = hideWork
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, holdSeconds), execute: hideWork)
     }
 
     // MARK: - Private
@@ -144,12 +115,12 @@ final class CompanionResponseOverlayManager {
             defer: false
         )
 
+        responseOverlayPanel.identifier = NSUserInterfaceItemIdentifier("tutor.reply")
         responseOverlayPanel.level = .statusBar
         responseOverlayPanel.isOpaque = false
         responseOverlayPanel.backgroundColor = .clear
         responseOverlayPanel.hasShadow = false
-        // Selector chips need clicks. The panel is tiny and only visible while
-        // a response is on-screen, so this does not block normal desktop work.
+        // The dismiss button needs mouse events; the bubble freezes on hover.
         responseOverlayPanel.ignoresMouseEvents = false
         responseOverlayPanel.hidesOnDeactivate = false
         responseOverlayPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -157,15 +128,19 @@ final class CompanionResponseOverlayManager {
 
         let hostingView = NSHostingView(
             rootView: CompanionResponseOverlayView(viewModel: overlayViewModel)
-                .frame(maxWidth: overlayMaxWidth)
+                .frame(width: overlayMaxWidth)
+                .fixedSize(horizontal: false, vertical: true)
         )
-        OpenClickyLiquidGlassWindowSurface.install(
-            hostingView: hostingView,
-            in: responseOverlayPanel,
-            frame: initialFrame,
-            cornerRadius: 14,
-            strength: .compact
-        )
+        responseHostingView = hostingView
+        updateHostingWidth = { [weak hostingView, weak self] width in
+            guard let self else { return }
+            hostingView?.rootView = CompanionResponseOverlayView(viewModel: self.overlayViewModel)
+                .frame(width: width)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        hostingView.frame = NSRect(origin: .zero, size: initialFrame.size)
+        hostingView.autoresizingMask = [.width, .height]
+        responseOverlayPanel.contentView = hostingView
 
         overlayPanel = responseOverlayPanel
     }
@@ -194,38 +169,14 @@ final class CompanionResponseOverlayManager {
     }
 
     private func repositionPanelNearCursor() {
-        guard let overlayPanel else { return }
+        guard let overlayPanel, !overlayViewModel.isHovered else { return }
 
-        let mouseLocation = NSEvent.mouseLocation
+        guard let pointerLocation = overlayViewModel.companion?.cursorOverlayState.aiPointerScreenLocation else { return }
+        overlayPanel.alphaValue = 1
         let panelSize = overlayPanel.frame.size
 
-        // Position the panel to the right of and slightly below the cursor.
-        // In macOS screen coordinates, Y increases upward, so "below" means
-        // subtracting from the cursor Y.
-        var panelOriginX = mouseLocation.x + cursorOffsetX
-        var panelOriginY = mouseLocation.y - cursorOffsetY - panelSize.height
-
-        // Clamp to the visible frame of the screen containing the cursor
-        // so the panel never goes off-screen.
-        if let currentScreen = NSScreen.screen(containingOrNearestTo: mouseLocation) {
-            let visibleFrame = currentScreen.visibleFrame
-
-            // If the panel would go off the right edge, flip it to the left of the cursor
-            if panelOriginX + panelSize.width > visibleFrame.maxX {
-                panelOriginX = mouseLocation.x - cursorOffsetX - panelSize.width
-            }
-
-            // If the panel would go below the bottom edge, push it above the cursor
-            if panelOriginY < visibleFrame.minY {
-                panelOriginY = mouseLocation.y + cursorOffsetY
-            }
-
-            // Final clamp
-            panelOriginX = max(visibleFrame.minX, min(panelOriginX, visibleFrame.maxX - panelSize.width))
-            panelOriginY = max(visibleFrame.minY, min(panelOriginY, visibleFrame.maxY - panelSize.height))
-        }
-
-        let nextOrigin = CGPoint(x: panelOriginX.rounded(.toNearestOrAwayFromZero), y: panelOriginY.rounded(.toNearestOrAwayFromZero))
+        guard let screen = NSScreen.screen(containingOrNearestTo: pointerLocation) else { return }
+        let nextOrigin = ReplyBubblePlacement.origin(anchor: pointerLocation, size: panelSize, visibleFrame: screen.visibleFrame)
         if let lastCursorTrackingOrigin,
            abs(lastCursorTrackingOrigin.x - nextOrigin.x) < 0.5,
            abs(lastCursorTrackingOrigin.y - nextOrigin.y) < 0.5 {
@@ -233,14 +184,67 @@ final class CompanionResponseOverlayManager {
         }
         lastCursorTrackingOrigin = nextOrigin
         overlayPanel.setFrameOrigin(nextOrigin)
+        #if DEBUG
+        let now = Date().timeIntervalSinceReferenceDate
+        if debugAnchorSamplesRemaining > 0, now - debugLastAnchorSampleAt > 0.15 {
+            debugAnchorSamplesRemaining -= 1
+            debugLastAnchorSampleAt = now
+            debugLogGeometry()
+        }
+        #endif
     }
 
-    private func resizePanelToFitContent() {
-        guard let overlayPanel, let contentView = overlayPanel.contentView else { return }
+    #if DEBUG
+    func debugCapturePanel() {
+        guard let panel = overlayPanel, isVisible else { return }
+        Task { @MainActor in
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                guard let window = content.windows.first(where: { $0.windowID == panel.windowNumber }) else { return }
+                let config = SCStreamConfiguration()
+                let scale = panel.backingScaleFactor
+                config.width = Int(panel.frame.width * scale)
+                config.height = Int(panel.frame.height * scale)
+                config.showsCursor = false
+                let cgImage = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: config)
+                if let png = NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) {
+                    try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("OpenClicky-reply-panel.png"), options: .atomic)
+                }
+            } catch {
+                print("Reply panel capture failed: \(error.localizedDescription)")
+            }
+        }
+    }
 
-        let fittingSize = contentView.fittingSize
-        let newWidth = min(fittingSize.width, overlayMaxWidth)
-        let newHeight = fittingSize.height
+    func debugLogGeometry() {
+        guard let panel = overlayPanel, let content = panel.contentView else { return }
+        // The existing hosting root has a frame modifier, so also record all children.
+        OpenClickyMessageLogStore.shared.append(lane: "voice", direction: "internal", event: "response_panel.geometry", fields: [
+            "windowWidth": panel.frame.width, "windowHeight": panel.frame.height,
+            "wrapperWidth": content.fittingSize.width, "wrapperHeight": content.fittingSize.height,
+            "childSizes": content.subviews.map { "\(type(of: $0)):\($0.fittingSize.width)x\($0.fittingSize.height)" }.joined(separator: ";"),
+            "visible": isVisible, "textLength": overlayViewModel.streamingResponseText.count,
+            "anchorX": overlayViewModel.companion?.cursorOverlayState.aiPointerScreenLocation?.x ?? -1,
+            "anchorY": overlayViewModel.companion?.cursorOverlayState.aiPointerScreenLocation?.y ?? -1,
+            "bubbleX": panel.frame.minX, "bubbleY": panel.frame.minY,
+            "mouseX": NSEvent.mouseLocation.x, "mouseY": NSEvent.mouseLocation.y
+        ])
+    }
+    #endif
+
+    private func resizePanelToFitContent() {
+        guard let overlayPanel, let contentView = overlayPanel.contentView,
+              let responseHostingView else { return }
+
+        // The glass wrapper reports 10x10, regardless of its SwiftUI child.
+        // Measure the actual response host so text cannot become a clipped square.
+        let textWidth = (overlayViewModel.streamingResponseText as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width
+        let desiredWidth = min(max(ceil(textWidth) + 44, 124), 340)
+        updateHostingWidth?(desiredWidth)
+        responseHostingView.layoutSubtreeIfNeeded()
+        let fittingSize = responseHostingView.fittingSize
+        let newWidth = desiredWidth
+        let newHeight = max(ceil(fittingSize.height), 34)
 
         // Keep the panel origin relative to the cursor (the timer handles that),
         // but update the frame size so the content fits.
@@ -251,20 +255,12 @@ final class CompanionResponseOverlayManager {
         frame.origin.y -= heightDelta
         overlayPanel.setFrame(frame, display: true)
         contentView.frame = NSRect(origin: .zero, size: frame.size)
+        repositionPanelNearCursor()
+        #if DEBUG
+        debugLogGeometry()
+        #endif
     }
 
-    private func fadeOutAndHide() {
-        guard let overlayPanel else { return }
-
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.4
-            overlayPanel.animator().alphaValue = 0
-        }, completionHandler: { [self] in
-            Task { @MainActor in
-                hideOverlay()
-            }
-        })
-    }
 
 }
 
@@ -275,24 +271,32 @@ private struct CompanionResponseOverlayView: View {
 
     var body: some View {
         if viewModel.isShowingResponse {
-            VStack(alignment: .leading, spacing: 6) {
-                if let companion = viewModel.companion {
-                    OpenClickyVoiceBackendSelector(companion: companion, style: .compact)
-                } else if let family = viewModel.providerFamily {
-                    Text(family.displayName)
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .foregroundColor(DS.Colors.textTertiary)
-                }
-
+            HStack(alignment: .top, spacing: 8) {
                 Text(viewModel.streamingResponseText.isEmpty ? "..." : viewModel.streamingResponseText)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(DS.Colors.textPrimary)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 320, alignment: .leading)
+                Button {
+                    viewModel.companion?.dismissCoachingOverlays()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Dismiss coaching reply")
+                .help("Dismiss reply and highlights (Esc)")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .onHover { hovered in
+                DispatchQueue.main.async {
+                    viewModel.isHovered = hovered && viewModel.isShowingResponse
+                }
+            }
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(DS.Colors.surface1.opacity(0.96))

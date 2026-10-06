@@ -23,7 +23,7 @@ nonisolated enum AppBundleConfiguration {
     static let userDeepgramVoiceAgentThinkModelDefaultsKey = "openClickyDeepgramVoiceAgentThinkModel"
     static let userTTSProviderDefaultsKey = "openClickyTTSProvider"
     static let openClickyVoicePlaybackVolumeDefaultsKey = "openClickyVoicePlaybackVolume"
-    static let defaultVoicePlaybackVolume = 0.45
+    static let defaultVoicePlaybackVolume = 0.0
     static let userSpeculativePreFireDefaultsKey = "openClickySpeculativePreFireEnabled"
     static let userVoiceResponseCaptionsEnabledDefaultsKey = "openClickyVoiceResponseCaptionsEnabled"
     static let userVoiceResponseCaptionFontDefaultsKey = "openClickyVoiceResponseCaptionFont"
@@ -68,7 +68,7 @@ nonisolated enum AppBundleConfiguration {
     /// When true (default), sample only while the primary mouse button is dragged during PTT hold.
     /// When false, any mouse movement while holding the key draws.
     static let userCircleWhileTalkingRequireClickDefaultsKey = "openClickyCircleWhileTalkingRequireClick"
-    static let appGroupIdentifier = "group.com.jkneen.openclicky"
+    static let appGroupIdentifier = "group.com.aminebenamar.openclicky"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [

@@ -180,6 +180,7 @@ final class OpenClickyNotchCaptureWindowManager {
         accentTheme: ClickyAccentTheme? = nil,
         submitText: @escaping (String) -> Void
     ) {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { hide(); return }
         activeMode = .collapsedText
         // The persistent status pill belongs on the display the user is
         // actually working on. Do this before sizing or choosing the
@@ -230,6 +231,7 @@ final class OpenClickyNotchCaptureWindowManager {
         accentColor: NSColor,
         companionManager: CompanionManager?
     ) -> Bool {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { return false }
         #if canImport(DynamicNotchKit)
         guard let screen, Self.hasPhysicalNotch(on: screen) else { return false }
         let hasRunningAgentWork = companionManager.map(Self.hasRunningAgentWork(in:)) ?? persistentHasRunningAgentWork
@@ -257,6 +259,7 @@ final class OpenClickyNotchCaptureWindowManager {
         audioPowerLevel: CGFloat,
         on screen: NSScreen?
     ) -> Bool {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { return false }
         #if canImport(DynamicNotchKit)
         guard let screen, Self.hasPhysicalNotch(on: screen) else { return false }
         dynamicNotchKitBridge.showVoice(
@@ -343,7 +346,21 @@ final class OpenClickyNotchCaptureWindowManager {
         contentView?.setAgentWorkActive(activity.isActive, foregroundAppName: foregroundAppName)
     }
 
+
+    private let menuBarPromptWindowManager = MenuBarPromptWindowManager()
+
+    func showConversationInput(entries: [CodexTranscriptEntry], historyVisible: Bool = false, title: String = "OpenClicky",
+                               submit: @escaping (String) -> Void) {
+        hide()
+        menuBarPromptWindowManager.show(entries: entries, historyVisible: historyVisible, title: title, submit: submit)
+    }
+
     func showTextInput(accentTheme: ClickyAccentTheme? = nil, submitText: @escaping (String) -> Void) {
+        if OpenClickyPresentationPolicy.menuBarOnly {
+            hide()
+            menuBarPromptWindowManager.show(submit: submitText)
+            return
+        }
         let accentColor = Self.nsAccentColor(for: accentTheme)
         persistentAccentColor = accentColor
         persistentSubmitText = submitText
@@ -359,7 +376,7 @@ final class OpenClickyNotchCaptureWindowManager {
         // expanded view rather than the standalone capture panel.
         panel?.orderOut(nil)
         isUsingDynamicNotchKitStatusSurface = true
-        let hidesWhenClosed = !Self.hasPhysicalNotch(on: screen)
+        let hidesWhenClosed = OpenClickyPresentationPolicy.menuBarOnly || !Self.hasPhysicalNotch(on: screen)
         dynamicNotchKitBridge.showTextInput(
             on: screen,
             accentColor: accentColor,
@@ -379,6 +396,7 @@ final class OpenClickyNotchCaptureWindowManager {
 
 
     private func restoreFallbackPillAfterExternalInput(on screen: NSScreen) {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { return }
         guard !Self.hasPhysicalNotch(on: screen), mainPanel?.isVisible != true else { return }
         guard let submitText = persistentSubmitText else { return }
         anchorScreenOverride = screen
@@ -412,6 +430,7 @@ final class OpenClickyNotchCaptureWindowManager {
     }
 
     func updateVoiceState(_ voicePhase: OpenClickyNotchVoicePhase, audioPowerLevel: CGFloat) {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { return }
         currentVoicePhase = voicePhase
         currentAudioPowerLevel = audioPowerLevel
         switch voicePhase {
@@ -518,6 +537,7 @@ final class OpenClickyNotchCaptureWindowManager {
     }
 
     private func collapseToPill(accentColor: NSColor, submitText: @escaping (String) -> Void) {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { hide(); return }
         activeMode = .collapsedText
         let collapsedWidth = Self.collapsedPanelWidth(for: preferredAnchorScreen(), appName: foregroundAppName)
         ensureCaptureContentView(width: collapsedWidth, height: Self.collapsedPanelHeight)
@@ -657,6 +677,7 @@ final class OpenClickyNotchCaptureWindowManager {
     }
 
     private func showFallbackStatusPanel(width: CGFloat, height: CGFloat) {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { panel?.orderOut(nil); return }
         hideDynamicNotchKitStatusSurface()
         showPanel(activating: false, width: width, height: height)
     }
@@ -1640,6 +1661,7 @@ final class OpenClickyNotchCaptureWindowManager {
     }
 
     private func showContextAffordance(_ suggestion: OpenClickyNotchContextSuggestion, signature: String, ignoresCooldown: Bool = false) {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { return }
         guard let submitText = persistentSubmitText else { return }
         // Context suggestions should appear where the user is currently
         // pointing/working, matching the quick-input route, rather than

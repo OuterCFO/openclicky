@@ -1,0 +1,20 @@
+name: Source checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  python-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: scripts/run-source-checks.sh
+  macos-contracts:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/run-source-checks.sh

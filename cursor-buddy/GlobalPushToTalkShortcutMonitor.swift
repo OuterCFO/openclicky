@@ -15,6 +15,9 @@ import Foundation
 final class GlobalPushToTalkShortcutMonitor: ObservableObject {
     let shortcutTransitionPublisher = PassthroughSubject<BuddyPushToTalkShortcut.ShortcutTransition, Never>()
     let shiftDoubleTapPublisher = PassthroughSubject<CGPoint, Never>()
+    let tutorDictationPublisher = PassthroughSubject<Void, Never>()
+    private var isTutorChordCandidate = false
+
     let escapeKeyPublisher = PassthroughSubject<Void, Never>()
 
     @Published private(set) var isActivationShortcutEnabled = true
@@ -134,6 +137,19 @@ final class GlobalPushToTalkShortcutMonitor: ObservableObject {
                 CGEvent.tapEnable(tap: globalEventTap, enable: true)
             }
             return Unmanaged.passUnretained(event)
+        }
+
+        if eventType == .keyDown { isTutorChordCandidate = false }
+        if eventType == .flagsChanged {
+            let modifiers = event.flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
+            if modifiers == [.maskCommand, .maskAlternate] {
+                isTutorChordCandidate = true
+            } else if isTutorChordCandidate {
+                isTutorChordCandidate = false
+                DispatchQueue.main.async { [tutorDictationPublisher] in
+                    tutorDictationPublisher.send(())
+                }
+            }
         }
 
         let eventKeyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))

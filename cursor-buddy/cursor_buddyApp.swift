@@ -35,6 +35,32 @@ struct cursor_buddyApp: App {
             }
 
             CommandMenu("Tools") {
+                #if DEBUG
+                Button("Preview Pointing Cursor…") { appDelegate.previewSecondaryPointerFromMenu() }
+                Button("Preview Reply Controls") { appDelegate.previewReplyControls() }
+                Button("Capture Reply Panel") { appDelegate.captureReplyPanel() }
+                Button("Capture Tutor Review") { appDelegate.captureTutorReview() }
+                #endif
+
+                Button("Dismiss Reply and Highlights") {
+                    appDelegate.dismissCoachingOverlaysFromMenu()
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+
+                Button("Show Chat…") {
+                    NotificationCenter.default.post(name: .clickyShowPanel, object: nil)
+                }
+                Button("Dictate with Wispr Flow…") {
+                    appDelegate.showWisprTutorInputFromMenu()
+                }
+                .keyboardShortcut("j", modifiers: [.command, .option])
+
+                Button("New OpenAI Task…") {
+                    appDelegate.showNewTaskInputFromMenu()
+                }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+
+
                 Button("Visual Intelligence…") {
                     appDelegate.showVisualIntelligenceWorkspaceFromApplicationMenu()
                 }
@@ -124,8 +150,7 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDel
         menuBarPanelManager = MenuBarPanelManager(companionManager: companionManager)
         companionManager.start()
         companionManager.scheduleWidgetSnapshotPublish()
-        registerAsLoginItemIfNeeded()
-        startSparkleUpdater()
+        // This fork starts manually and does not use the upstream update feed.
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -135,6 +160,21 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDel
     func application(_ application: NSApplication, open urls: [URL]) {
         urls.forEach { companionManager.handleApplicationOpenURL($0) }
     }
+
+    #if DEBUG
+    func previewSecondaryPointerFromMenu() { companionManager.debugPreviewSecondaryPointer() }
+    func previewReplyControls() {
+        companionManager.interruptCurrentVoiceResponse()
+        companionManager.updateVoiceResponseCaption("Close this reply with Esc or ×.", force: true, updatesDock: false)
+    }
+    func captureReplyPanel() { companionManager.responseOverlayManager.debugCapturePanel() }
+    func captureTutorReview() { companionManager.debugCaptureTutorReview() }
+    #endif
+
+    func showWisprTutorInputFromMenu() { companionManager.showWisprTutorInput() }
+    func dismissCoachingOverlaysFromMenu() { companionManager.dismissCoachingOverlays() }
+
+    func showNewTaskInputFromMenu() { companionManager.showQuickTextInputFromMenuBar() }
 
     func showSettingsWindowFromApplicationMenu() {
         companionManager.showSettingsWindow()

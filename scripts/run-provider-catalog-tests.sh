@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Compile and run pure catalog + discovery + auto-hide policy tests against
+# Compile and run pure catalog, discovery, placement and dismissal contract tests against
 # SHIPPED sources (OpenClickyModelCatalog, OpenClickyProviderDiscovery,
-# CodexRuntimeLocator, ResponseOverlayAutoHidePolicy).
+# CodexRuntimeLocator, ReplyVisibilityPolicy).
 # Avoids xcodebuild (forbidden for day-to-day agent work per AGENTS.md).
 set -euo pipefail
 
@@ -11,7 +11,7 @@ mkdir -p "$OUT"
 trap 'rm -rf "$OUT"' EXIT
 
 SDK="$(xcrun --show-sdk-path --sdk macosx)"
-TARGET="arm64-apple-macos15.0"
+TARGET="$(uname -m)-apple-macos26.0"
 
 # Minimal AppBundleConfiguration surface used only by discovery key probes.
 cat > "$OUT/AppBundleConfigurationStub.swift" <<'SWIFT'
@@ -64,7 +64,7 @@ expect(claudeDefault.provider.voiceBackendFamily == .claude, "claude family maps
 let codexDefault = OpenClickyModelCatalog.voiceResponseModel(withID: OpenClickyVoiceBackendFamily.codex.defaultModelID)
 expect(codexDefault.provider.voiceBackendFamily == .codex, "codex family default maps to codex family")
 expect(OpenClickyVoiceBackendFamily.apple.defaultModelID == OpenClickyModelCatalog.appleFoundationModelID, "apple default model id")
-expect(OpenClickyVoiceBackendFamily.claude.defaultModelID == "claude-haiku-4-5", "claude default model id")
+expect(claudeDefault.provider == .anthropic && !OpenClickyModelCatalog.isSpeechModelID(claudeDefault.id), "claude default is a text response model")
 expect(OpenClickyVoiceBackendFamily.codex.defaultModelID == OpenClickyModelCatalog.defaultCodexActionsModelID, "codex default model id")
 expect(OpenClickyVoiceBackendFamily.allCases.count == 3, "exactly three families")
 expect(Set(OpenClickyVoiceBackendFamily.allCases.map(\.rawValue)) == Set(["apple", "codex", "claude"]), "family raw values")
@@ -89,30 +89,25 @@ for family in OpenClickyVoiceBackendFamily.allCases {
 }
 
 // --- Auto-hide cancel-before-reschedule (response bubble lifetime) ---
-var policy = ResponseOverlayAutoHidePolicy()
-let first = policy.schedule(now: 0, holdSeconds: 6)
-expect(policy.shouldHide(now: 6, generation: first), "first schedule fires at T+6")
-let second = policy.schedule(now: 1.5, holdSeconds: 6)
-expect(!policy.shouldHide(now: 6, generation: first), "stale first-chunk hide must NOT fire after reschedule")
-expect(policy.shouldHide(now: 7.5, generation: second), "second schedule fires at 1.5+6")
-expect(!policy.shouldHide(now: 7.4, generation: second), "second schedule not early")
-policy.cancel()
-expect(policy.scheduledHideAt == nil, "cancel clears pending hide")
-expect(!policy.shouldHide(now: 100, generation: second), "cancelled gen never fires")
-
-var stream = ResponseOverlayAutoHidePolicy()
-var gens: [UInt64] = []
-for t in [0.0, 0.5, 1.0, 2.0] {
-    stream.cancel()
-    gens.append(stream.schedule(now: t, holdSeconds: 6))
-}
-let last = gens.last!
-for (i, g) in gens.dropLast().enumerated() {
-    expect(!stream.shouldHide(now: 100, generation: g), "stale gen \(i) must not fire")
-}
-expect(stream.shouldHide(now: 2.0 + 6, generation: last), "only last chunk schedule fires")
-expect(ResponseOverlayAutoHidePolicy.defaultHoldSeconds > 1.2, "bubble hold outlives 1.2s cursor clear")
-expect(ResponseOverlayAutoHidePolicy.defaultHoldSeconds >= 6, "default hold is 6s")
+let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
+let size = CGSize(width: 300, height: 80)
+let right = ReplyBubblePlacement.origin(anchor: CGPoint(x: 990, y: 300), size: size, visibleFrame: visible)
+expect(right.x + size.width <= visible.maxX, "reply flips away from right display edge")
+let bottom = ReplyBubblePlacement.origin(anchor: CGPoint(x: 200, y: 5), size: size, visibleFrame: visible)
+expect(bottom.y >= visible.minY, "reply stays above bottom display edge")
+let negativeDisplay = CGRect(x: -1000, y: -200, width: 1000, height: 800)
+let negative = ReplyBubblePlacement.origin(anchor: CGPoint(x: -990, y: -195), size: size, visibleFrame: negativeDisplay)
+expect(negative.x >= negativeDisplay.minX && negative.y >= negativeDisplay.minY, "reply respects negative-origin display")
+expect(ScreenTutorRoutingPolicy.shouldStayInTutor("Point to the heading on my screen"), "screen pointing remains a direct answer")
+expect(!ScreenTutorRoutingPolicy.shouldStayInTutor("Run an agent to delete the page"), "explicit agent work keeps its route")
+var visibility = ReplyVisibilityPolicy()
+expect(visibility.canPresent, "new reply can present")
+visibility.dismiss()
+expect(!visibility.canPresent, "dismissed reply suppresses late chunks")
+visibility.dismiss()
+expect(!visibility.canPresent, "repeated dismissal stays dismissed")
+visibility.beginNewReply()
+expect(visibility.canPresent, "new question resets dismissal")
 
 if failures == 0 {
     print("\nALL PASSED")
@@ -128,8 +123,10 @@ xcrun swiftc -O -sdk "$SDK" -target "$TARGET" \
   "$ROOT/cursor-buddy/OpenClickyModelCatalog.swift" \
   "$ROOT/cursor-buddy/CodexRuntimeLocator.swift" \
   "$ROOT/cursor-buddy/OpenClickyProviderDiscovery.swift" \
-  "$ROOT/cursor-buddy/ResponseOverlayAutoHidePolicy.swift" \
+  "$ROOT/cursor-buddy/ReplyVisibilityPolicy.swift" \
+  "$ROOT/cursor-buddy/ReplyBubblePlacement.swift" \
+  "$ROOT/cursor-buddy/ScreenTutorRoutingPolicy.swift" \
   "$OUT/AppBundleConfigurationStub.swift" \
   "$OUT/main.swift"
 
-exec "$OUT/provider_tests"
+"$OUT/provider_tests"

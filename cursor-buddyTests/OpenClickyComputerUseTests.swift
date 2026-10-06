@@ -227,31 +227,16 @@ struct OpenClickyComputerUseTests {
         }
     }
 
-    @Test func responseOverlayAutoHideCancelsPriorScheduleBeforeReschedule() throws {
-        var policy = ResponseOverlayAutoHidePolicy()
-        let first = policy.schedule(now: 0, holdSeconds: 6)
-        #expect(policy.isCurrent(first))
-        #expect(policy.shouldHide(now: 6, generation: first))
-
-        // Mid-stream chunk: cancel-before-schedule must invalidate the first hide.
-        let second = policy.schedule(now: 1.5, holdSeconds: 6)
-        #expect(second != first)
-        #expect(!policy.isCurrent(first))
-        #expect(!policy.shouldHide(now: 6, generation: first), "stale first-chunk hide must not fire")
-        #expect(policy.shouldHide(now: 7.5, generation: second))
-        #expect(!policy.shouldHide(now: 7.4, generation: second))
-
-        // updateStreamingText path: cancel alone keeps bubble open with no pending hide.
-        policy.cancel()
-        #expect(policy.scheduledHideAt == nil)
-        #expect(!policy.shouldHide(now: 100, generation: second))
-    }
-
-    @Test func responseOverlayAutoHideDefaultHoldIsLongerThanIdleCaptionClear() throws {
-        // Cursor caption clears at ~1.2s on voice idle; interactive bubble must
-        // outlive that so the provider selector remains usable (criterion 3).
-        #expect(ResponseOverlayAutoHidePolicy.defaultHoldSeconds > 1.2)
-        #expect(ResponseOverlayAutoHidePolicy.defaultHoldSeconds >= 6)
+    @Test func manuallyDismissedReplyRejectsLateChunksUntilNewQuestion() {
+        var policy = ReplyVisibilityPolicy()
+        #expect(policy.canPresent)
+        policy.dismiss()
+        #expect(!policy.canPresent)
+        // Repeated dismissal cannot reopen the reply.
+        policy.dismiss()
+        #expect(!policy.canPresent)
+        policy.beginNewReply()
+        #expect(policy.canPresent)
     }
 
     @Test func retiredRealtimeTwoAliasMigratesToCurrentMiniDefault() throws {

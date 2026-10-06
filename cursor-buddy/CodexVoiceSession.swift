@@ -46,7 +46,8 @@ final class CodexVoiceSession {
         self.homeManager = homeManager
         self.processManager = processManager ?? CodexProcessManager()
         self.fileManager = fileManager
-        self.workingDirectory = workingDirectory ?? fileManager.homeDirectoryForCurrentUser
+        self.workingDirectory = workingDirectory ?? homeManager.applicationSupportDirectory.appendingPathComponent("TutorWorkspace", isDirectory: true)
+        try? fileManager.createDirectory(at: self.workingDirectory, withIntermediateDirectories: true)
 
         self.processManager.onNotification = { [weak self] notification in
             Task { @MainActor in
@@ -212,23 +213,16 @@ final class CodexVoiceSession {
                 "input": input,
                 "cwd": workingDirectory.path,
                 "approvalPolicy": "never",
-                // SECURITY: voice turns consume untrusted content (transcribed
-                // speech + full-screen screenshots that may contain adversarial
-                // prompt-injection text). Previously this was `danger-full-access`
-                // which granted arbitrary shell/filesystem reach to a model
-                // driven by screen pixels. `workspace-write` confines the turn
-                // to the temporary working directory (image attachments live
-                // there). approval_policy stays "never" because voice turns are
-                // non-interactive (no human to approve prompts), but the sandbox
-                // now bounds the blast radius.
-                "sandbox": "workspace-write",
+                // Tutor turns inspect attached screenshots without writing files
+                // or enabling network access for model-invoked tools.
+                "sandboxPolicy": ["type": "readOnly", "networkAccess": false],
                 "model": model,
                 // Voice responses should prioritize first-token latency;
                 // Agent Mode keeps the user-selected reasoning effort.
                 "effort": "low",
                 "config": [
                     "approval_policy": "never",
-                    "sandbox_mode": "workspace-write"
+                    "sandbox_mode": "read-only"
                 ]
             ])
 
@@ -302,10 +296,10 @@ final class CodexVoiceSession {
             "modelProvider": homeManager.modelProviderID,
             "cwd": workingDirectory.path,
             "approvalPolicy": "never",
-            "sandbox": "danger-full-access",
+            "sandbox": "read-only",
             "config": [
                 "approval_policy": "never",
-                "sandbox_mode": "danger-full-access"
+                "sandbox_mode": "read-only"
             ],
             "serviceName": "OpenClicky Voice",
             "baseInstructions": baseInstructions,

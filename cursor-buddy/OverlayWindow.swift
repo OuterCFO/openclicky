@@ -657,79 +657,8 @@ struct BlueCursorView: View {
             // Nearly transparent background (helps with compositing)
             Color.black.opacity(0.001)
 
-            // Welcome speech bubble (first launch only)
-            if isCursorOnThisScreen && showWelcome && !welcomeText.isEmpty {
-                Text(welcomeText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(captionBubbleTextColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(captionBubbleBackgroundColor)
-                            .shadow(color: captionBubbleShadowColor, radius: 6, x: 0, y: 2)
-                    )
-                    .fixedSize()
-                    .overlay(
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(key: SizePreferenceKey.self, value: geo.size)
-                        }
-                    )
-                    .opacity(bubbleOpacity)
-                    .position(x: cursorPosition.x + 10 + (bubbleSize.width / 2), y: cursorPosition.y + 18)
-                    .animation(cursorFollowAnimation, value: cursorPosition)
-                    .animation(.easeOut(duration: 0.5), value: bubbleOpacity)
-                    .onPreferenceChange(SizePreferenceKey.self) { newSize in
-                        bubbleSize = newSize
-                    }
-            }
-
-            // Navigation pointer bubble — shown when buddy arrives at a detected element.
-            // Pops in with a scale-bounce (0.5x → 1.0x spring) and a bright initial
-            // glow that settles, creating a "materializing" effect.
-            if buddyNavigationMode == .pointingAtTarget && !navigationBubbleText.isEmpty {
-                Text(navigationBubbleText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(captionBubbleTextColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(captionBubbleBackgroundColor)
-                            .shadow(
-                                color: captionBubbleShadowColor.opacity(0.8 + (1.0 - navigationBubbleScale) * 0.2),
-                                radius: 6 + (1.0 - navigationBubbleScale) * 10,
-                                x: 0, y: 2
-                            )
-                    )
-                    .fixedSize()
-                    .overlay(
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(key: NavigationBubbleSizePreferenceKey.self, value: geo.size)
-                        }
-                    )
-                    .scaleEffect(navigationBubbleScale)
-                    .opacity(navigationBubbleOpacity)
-                    .position(x: cursorPosition.x + 10 + (navigationBubbleSize.width / 2), y: cursorPosition.y + 18)
-                    .animation(cursorFollowAnimation, value: cursorPosition)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.6), value: navigationBubbleScale)
-                    .animation(.easeOut(duration: 0.5), value: navigationBubbleOpacity)
-                    .onPreferenceChange(NavigationBubbleSizePreferenceKey.self) { newSize in
-                        navigationBubbleSize = newSize
-                    }
-            }
-
-            if let externalPrimaryCaption = cursorState.externalPrimaryCaptionText?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !externalPrimaryCaption.isEmpty,
-               buddyIsVisibleOnThisScreen {
-                externalCaption(
-                    externalPrimaryCaption,
-                    at: cursorPosition,
-                    color: externalPrimaryCaptionColor
-                )
-            }
+            // Pointer text belongs in the separate interactive response panel,
+            // never in this cursor-following drawing surface.
 
             if let activeControlGlowRect = cursorState.activeControlGlowRect,
                activeControlGlowRect.intersects(screenFrame) {
@@ -757,45 +686,6 @@ struct BlueCursorView: View {
                     snappedRect,
                     label: cursorState.circleSelectSnapLabel
                 )
-            }
-
-            if shouldShowAgentTaskBubble,
-               let agentTaskBubbleText = cursorState.agentTaskBubbleText?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !agentTaskBubbleText.isEmpty {
-                let bubblePosition = anchoredBubblePosition(
-                    for: cursorPosition,
-                    bubbleSize: agentTaskBubbleSize,
-                    horizontalOffset: 12,
-                    verticalOffset: 20
-                )
-
-                Text(agentTaskBubbleText)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(captionBubbleTextColor)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(captionBubbleBackgroundColor)
-                            .shadow(color: captionBubbleShadowColor, radius: 8, x: 0, y: 2)
-                    )
-                    .frame(maxWidth: 300, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .overlay(
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(key: AgentTaskBubbleSizePreferenceKey.self, value: geo.size)
-                        }
-                    )
-                    .position(x: bubblePosition.x, y: bubblePosition.y)
-                    .opacity(cursorOpacity)
-                    .animation(cursorFollowAnimation, value: cursorPosition)
-                    .animation(.easeOut(duration: 0.16), value: cursorState.agentTaskBubbleText)
-                    .onPreferenceChange(AgentTaskBubbleSizePreferenceKey.self) { newSize in
-                        agentTaskBubbleSize = newSize
-                    }
             }
 
             // Cursor companion — shown when idle or while TTS is playing (responding).
@@ -854,6 +744,12 @@ struct BlueCursorView: View {
                 // transitions like processing or pointing.
                 .onChange(of: cursorPosition) { _, newPos in
                     updatePetAnimationStateForCursorMotion(toX: newPos.x)
+                    if buddyIsVisibleOnThisScreen {
+                        cursorState.aiPointerScreenLocation = CGPoint(
+                            x: screenFrame.minX + newPos.x,
+                            y: screenFrame.maxY - newPos.y
+                        )
+                    }
                 }
                 .onChange(of: buddyNavigationMode) { _, _ in
                     updatePetAnimationStateForCursorMotion(toX: cursorPosition.x)
@@ -893,6 +789,12 @@ struct BlueCursorView: View {
 
             let swiftUIPosition = convertScreenPointToSwiftUICoordinates(mouseLocation)
             self.cursorPosition = CGPoint(x: swiftUIPosition.x + 35, y: swiftUIPosition.y + 25)
+            if isCursorOnThisScreen {
+                cursorState.aiPointerScreenLocation = CGPoint(
+                    x: screenFrame.minX + cursorPosition.x,
+                    y: screenFrame.maxY - cursorPosition.y
+                )
+            }
 
             startTrackingCursor()
             DispatchQueue.main.async {
@@ -1124,10 +1026,6 @@ struct BlueCursorView: View {
                 .position(position)
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
 
-            if let caption = cursor.caption?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !caption.isEmpty {
-                externalCaption(caption, at: position, color: color)
-            }
         }
         .animation(.spring(response: 0.16, dampingFraction: 0.72), value: cursor.screenLocation)
     }
@@ -2880,6 +2778,7 @@ final class ClickyAgentDockWindowManager {
         onScreen screen: NSScreen,
         position: AgentParkingPosition
     ) {
+        guard !OpenClickyPresentationPolicy.menuBarOnly else { hide(); return }
         let targetSize = preferredDockSize(itemCount: companionManager.agentDockItems.count, on: screen)
         layoutState.dockHeight = targetSize.height
 
