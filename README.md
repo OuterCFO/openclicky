@@ -4,10 +4,10 @@
 Ask about what you are working on, get an answer beside an AI pointer, and keep using your app.
 Use it for navigation, troubleshooting, learning software, understanding unfamiliar interfaces, and ongoing computer work.
 
-This public fork of [Jason Kneen's OpenClicky](https://github.com/jasonkneen/openclicky) adds a compact, no-notch workflow with Wispr Flow dictation and ChatGPT-backed Codex sessions.
+This standalone project builds on [Jason Kneen's MIT-licensed OpenClicky](https://github.com/jasonkneen/openclicky) and adds a compact, no-notch workflow with Wispr Flow dictation and ChatGPT-backed Codex sessions.
 It is independent of the commercial Clicky product and of OpenAI.
 
-## What this fork changes
+## What this project adds
 
 - **Command + Option** opens a focused input and starts Wispr Flow.
 - Multiline prompts wrap and grow; longer drafts scroll.
@@ -39,7 +39,7 @@ Terminal attachment through the shared server is implemented; attachment to desk
 
 This is a **source distribution**, not a notarized one-click installer.
 The current project targets **macOS 26 or later** and was built with **Xcode 27** on Apple Silicon.
-The runtime preparation script also supports Intel macOS archives; that hardware has not been validated for this fork.
+The runtime preparation script also supports Intel macOS archives; that hardware has not been validated for this project.
 
 ```sh
 git clone https://github.com/OuterCFO/openclicky.git
@@ -85,7 +85,7 @@ An [interactive visual explainer](docs/interactive/OpenClicky-explained.html) is
 That explainer describes the inspected development setup, not every future user's configuration.
 
 The app includes OpenAI/Codex, Claude, Apple, and other upstream adapters.
-This fork's verified setup uses ChatGPT-backed Codex.
+This project's verified setup uses ChatGPT-backed Codex.
 Other providers need their own access and are not covered by a ChatGPT subscription.
 Screen guidance requires a backend capable of understanding the supplied images.
 
@@ -127,5 +127,5 @@ Provider alternatives, Intel hardware, and a fresh independent user's full setup
 Known limitations and test steps are recorded in [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 Original OpenClicky is by **Jason Kneen**, under the [MIT license](LICENSE).
-This fork is maintained by **OuterCFO**.
+This standalone project is maintained by **OuterCFO**.
 Third-party components retain their own licenses; see [NOTICE.md](NOTICE.md).
