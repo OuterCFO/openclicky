@@ -2,6 +2,7 @@
 """Check the Git snapshot for common private files and credential patterns."""
 from pathlib import Path
 import re
+import os
 import subprocess
 import sys
 
@@ -14,6 +15,8 @@ patterns = [
 ]
 forbidden = {'auth.json', 'secrets.env', 'Local.xcconfig', '.env', '.env.local'}
 failures = []
+# CI runner paths in inherited public tooling are not maintainer private paths.
+personal_home = None if os.environ.get('GITHUB_ACTIONS') else (str(Path.home()) + '/').encode()
 for name in filter(None, paths):
     path = root / name
     if not path.is_file():
@@ -23,7 +26,7 @@ for name in filter(None, paths):
     data = path.read_bytes()
     if any(pattern.search(data) for pattern in patterns):
         failures.append(f'Credential-like value found: {name}')
-    if (str(Path.home()) + '/').encode() in data or (name.endswith('project.pbxproj') and re.search(rb'DEVELOPMENT_TEAM = [A-Z0-9]{10};', data)):
+    if (personal_home and personal_home in data) or (name.endswith('project.pbxproj') and re.search(rb'DEVELOPMENT_TEAM = [A-Z0-9]{10};', data)):
         failures.append(f'Personal development path/team found: {name}')
 if failures:
     print('\n'.join(failures), file=sys.stderr)
