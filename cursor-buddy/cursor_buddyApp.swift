@@ -174,7 +174,11 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDel
     func showWisprTutorInputFromMenu() { companionManager.showWisprTutorInput() }
     func dismissCoachingOverlaysFromMenu() { companionManager.dismissCoachingOverlays() }
 
-    func showNewTaskInputFromMenu() { companionManager.showQuickTextInputFromMenuBar() }
+    func showNewTaskInputFromMenu() { companionManager.startNewCompactTask() }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        companionManager.showTutorInput(startDictation: false)
+        return false
+    }
 
     func showSettingsWindowFromApplicationMenu() {
         companionManager.showSettingsWindow()
@@ -259,6 +263,7 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDel
         guard handleShowingUpdate, !state.userInitiated else { return }
         NSApp.activate(ignoringOtherApps: true)
         menuBarPanelManager?.showPanelOnLaunch()
+        companionManager.showTutorInput(startDictation: false)
     }
 
     private static func sparkleFeedOverrideURLString() -> String? {

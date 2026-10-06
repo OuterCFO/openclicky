@@ -632,7 +632,10 @@ final class CompanionManager: ObservableObject {
     /// Caption text still mirrors onto the full-screen cursor overlay when
     /// voice-response captions are enabled; this panel is the interactive path.
     let responseOverlayManager = CompanionResponseOverlayManager()
-    private let tutorDockItemID = UUID(uuidString: "039BB5B3-6D99-481C-80E4-FC4B5AF86A43")!
+    private var companionConversations = CompanionConversationStore.load(
+        legacyEntries: CompanionManager.loadTutorChatEntries(),
+        summary: UserDefaults.standard.string(forKey: "openClickyCompactedVoiceConversationArchive"))
+    private var tutorDockItemID: UUID { companionConversations.activeID }
 
     /// Anthropic API key for direct Claude requests.
     /// Environment fallback supports Xcode schemes and local launch scripts.
@@ -1035,6 +1038,9 @@ final class CompanionManager: ObservableObject {
     /// Conversation history so Claude remembers prior exchanges within a session.
     /// Each entry is the user's transcript and Claude's response.
     private static func loadTutorChatEntries() -> [CodexTranscriptEntry] {
+        if let data = UserDefaults.standard.data(forKey: CompanionConversationStore.defaultsKey),
+           let store = try? JSONDecoder().decode(CompanionConversationStore.self, from: data),
+           let current = store.conversations.first(where: { $0.id == store.activeID && !$0.archived }) { return current.entries }
         guard let data = UserDefaults.standard.data(forKey: "openclicky.tutorChatHistory"),
               let entries = try? JSONDecoder().decode([CodexTranscriptEntry].self, from: data) else { return [] }
         var uniqueEntries: [CodexTranscriptEntry] = []
@@ -1131,6 +1137,7 @@ final class CompanionManager: ObservableObject {
         }
         if let data = try? JSONEncoder().encode(homeChatEntries) {
             UserDefaults.standard.set(data, forKey: "openclicky.tutorChatHistory")
+            saveCompactConversation()
         }
     }
 
@@ -1340,6 +1347,7 @@ final class CompanionManager: ObservableObject {
         guard !savedArchive.isEmpty else { return }
 
         UserDefaults.standard.set(savedArchive, forKey: Self.compactedVoiceConversationArchiveDefaultsKey)
+        saveCompactConversation()
 
         let trimmedChunk = archiveChunk.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedChunk.isEmpty else { return }
@@ -2310,7 +2318,7 @@ final class CompanionManager: ObservableObject {
             startWakeWordListeningIfNeeded(reason: "startup")
         }
         bindAgentSessionObservation()
-        if runtimeMode == .menuBar, !homeChatEntries.isEmpty { ensureTutorDockItem() }
+        if runtimeMode == .menuBar { refreshCompanionTaskIcons() }
         startRelaunchableAgentAutoResumeChecks()
         if runtimeMode == .menuBar, !agentDockItems.isEmpty {
             showAgentDockWindowNearCurrentScreen()
@@ -8704,43 +8712,106 @@ final class CompanionManager: ObservableObject {
         submitTextModePrompt(text, allowsAgentRouting: false)
     }
 
-    private func ensureTutorDockItem() {
-        if !agentDockItems.contains(where: { $0.id == tutorDockItemID }) {
+    private func saveCompactConversation() {
+        companionConversations.update(entries: homeChatEntries, summary: compactedVoiceConversationArchive)
+        companionConversations.save()
+    }
+    private func refreshCompanionTaskIcons() {
+        let ids = Set(companionConversations.conversations.map(\.id))
+        agentDockItems.removeAll { ids.contains($0.id) }
+        for task in companionConversations.conversations where !task.archived {
             agentDockItems.append(ClickyAgentDockItem(
-                id: tutorDockItemID, sessionID: nil, title: "OpenClicky",
-                userInstruction: homeChatEntries.last(where: { $0.role == .user })?.text ?? "Ask about your screen",
-                accentTheme: .mint, status: .done, progressStageLabel: "Ready",
-                progressStepText: nil, activityStatusLines: [],
-                caption: homeChatEntries.last(where: { $0.role == .assistant })?.text,
-                suggestedNextActions: [], createdAt: Date()
-            ))
+                id: task.id, sessionID: nil, title: task.title,
+                userInstruction: task.title, accentTheme: .mint, status: .done,
+                progressStageLabel: "Ready", progressStepText: nil, activityStatusLines: [],
+                caption: task.entries.last(where: { $0.role == .assistant })?.text,
+                suggestedNextActions: [], createdAt: task.entries.first?.createdAt ?? Date()))
         }
         showAgentDockWindowNearCurrentScreen()
         scheduleWidgetSnapshotPublish()
     }
-
+    private func ensureTutorDockItem() { saveCompactConversation(); refreshCompanionTaskIcons() }
     private var compactInputAgentSessionID: UUID?
 
+    private func activateCompactConversation() {
+        dismissCoachingOverlays()
+        codexVoiceSession.stop()
+        codexVoiceSession = CodexVoiceSession(model: OpenClickyModelCatalog.codexVoiceSessionModel(withID: selectedModel).id,
+                                            homeManager: codexHomeManager)
+        homeChatEntries = companionConversations.active.entries
+        compactedVoiceConversationArchive = companionConversations.active.summary
+        conversationHistory = []
+        var prompt: String?
+        for entry in homeChatEntries {
+            if entry.role == .user { prompt = entry.text }
+            if entry.role == .assistant, let user = prompt {
+                conversationHistory.append((userTranscript: user, assistantResponse: entry.text)); prompt = nil
+            }
+        }
+        compactInputAgentSessionID = nil
+        companionConversations.save()
+        if let data = try? JSONEncoder().encode(homeChatEntries) { UserDefaults.standard.set(data, forKey: "openclicky.tutorChatHistory") }
+        if let summary = compactedVoiceConversationArchive {
+            UserDefaults.standard.set(summary, forKey: Self.compactedVoiceConversationArchiveDefaultsKey)
+        } else { UserDefaults.standard.removeObject(forKey: Self.compactedVoiceConversationArchiveDefaultsKey) }
+        refreshCompanionTaskIcons()
+    }
+    func startNewCompactTask() {
+        dismissCoachingOverlays()
+        saveCompactConversation()
+        companionConversations.startNew()
+        activateCompactConversation()
+        showTutorInput(startDictation: false)
+    }
+    func removeCurrentCompactTask() {
+        if let id = compactInputAgentSessionID {
+            stopCodexAgentSession(id, reason: "compact_task_removed")
+            archiveSession(id, allowIncomplete: true)
+            compactInputAgentSessionID = nil
+        } else {
+            dismissCoachingOverlays()
+            saveCompactConversation()
+            companionConversations.removeActive()
+            activateCompactConversation()
+        }
+        showTutorInput(startDictation: false)
+    }
+    private func presentCompactTask(entries: [CodexTranscriptEntry], historyVisible: Bool = false,
+                                    title: String, submit: @escaping (String) -> Void) {
+        let choices = companionConversations.conversations.filter { !$0.archived }.map {
+            CompactTaskChoice(id: $0.id, title: $0.title)
+        } + codexAgentSessions.filter { $0.hasVisibleActivity && !archivedSessionIDs.contains($0.id) }.map {
+            CompactTaskChoice(id: $0.id, title: $0.title)
+        }
+        notchCaptureWindowManager.showConversationInput(entries: entries, historyVisible: historyVisible, title: title,
+            taskChoices: choices,
+            selectTask: { [weak self] id in _ = self?.showCompactConversationForAgentDockItem(id) },
+            newTask: { [weak self] in self?.startNewCompactTask() },
+            removeTask: { [weak self] in self?.removeCurrentCompactTask() }, submit: submit)
+    }
     func showTutorConversation() {
         compactInputAgentSessionID = nil
         ensureTutorDockItem()
-        notchCaptureWindowManager.showConversationInput(entries: homeChatEntries, historyVisible: true) { [weak self] text in
-            self?.submitTutorPrompt(text)
-        }
+        presentCompactTask(entries: homeChatEntries, historyVisible: true,
+                           title: companionConversations.active.title) { [weak self] text in self?.submitTutorPrompt(text) }
     }
-
     @discardableResult
     func showCompactConversationForAgentDockItem(_ itemID: UUID) -> Bool {
-        if itemID == tutorDockItemID { showTutorConversation(); return true }
+        if companionConversations.conversations.contains(where: { $0.id == itemID && !$0.archived }) {
+            if companionConversations.activeID != itemID {
+                dismissCoachingOverlays(); saveCompactConversation()
+                companionConversations.select(itemID); activateCompactConversation()
+            }
+            showTutorConversation(); return true
+        }
         let sessionID = agentDockItems.first(where: { $0.id == itemID })?.sessionID ?? itemID
         guard let session = codexAgentSessions.first(where: { $0.id == sessionID }) else { return false }
         compactInputAgentSessionID = sessionID
-        notchCaptureWindowManager.showConversationInput(entries: session.entries, historyVisible: true, title: session.title) { [weak self] text in
+        presentCompactTask(entries: session.entries, historyVisible: true, title: session.title) { [weak self] text in
             self?.submitTextFollowUp(text, toAgentSessionID: sessionID)
         }
         return true
     }
-
     func showTutorInput(startDictation: Bool) {
         guard hasAccessibilityPermission, hasScreenRecordingPermission else { return }
         startPrewarmedScreenshotCaptureIfPossible()
@@ -8748,12 +8819,12 @@ final class CompanionManager: ObservableObject {
         NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
         if let sessionID = compactInputAgentSessionID,
            let session = codexAgentSessions.first(where: { $0.id == sessionID }) {
-            notchCaptureWindowManager.showConversationInput(entries: session.entries, title: session.title) { [weak self] text in
+            presentCompactTask(entries: session.entries, title: session.title) { [weak self] text in
                 self?.submitTextFollowUp(text, toAgentSessionID: sessionID)
             }
         } else {
             compactInputAgentSessionID = nil
-            notchCaptureWindowManager.showConversationInput(entries: homeChatEntries) { [weak self] text in
+            presentCompactTask(entries: homeChatEntries, title: companionConversations.active.title) { [weak self] text in
                 self?.submitTutorPrompt(text)
             }
         }
@@ -8761,8 +8832,7 @@ final class CompanionManager: ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(350))
             guard let url = URL(string: "wispr-flow://start-hands-free") else { return }
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = false
+            let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = false
             NSWorkspace.shared.open(url, configuration: configuration) { _, _ in }
         }
     }

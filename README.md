@@ -11,6 +11,7 @@ It is independent of the commercial Clicky product and of OpenAI.
 
 - **Command + Option** opens a focused input and starts Wispr Flow.
 - Multiline prompts wrap and grow; longer drafts scroll.
+- New task, Tasks, and Remove task controls live in the compact panel; independent screen conversations persist across restarts.
 - A task's menu bar icon opens its conversation history in the same panel.
 - Follow-ups stay with the selected session; separate tasks have separate transcripts.
 - Answers appear beside the moving AI pointer, with optional screen highlights.

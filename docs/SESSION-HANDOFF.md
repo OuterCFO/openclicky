@@ -9,6 +9,11 @@ Bidirectional automatic session sync is planned, not implemented.
 
 Command + Option opens the compact input, focuses it, and invokes external Wispr Flow dictation.
 Return submits and hides input; Shift + Return inserts a newline.
+The compact panel has New task, Tasks, and Remove task controls.
+New task starts an independent screen conversation; Tasks selects an existing conversation.
+Remove task stops the selected task and archives its history, then selects another conversation or creates an empty one.
+Opening the installed application again shows the compact panel.
+Command + Option + N is the application-menu shortcut for a new compact task.
 The AI pointer shows the answer beside the relevant screen area.
 Escape or × dismisses the reply and highlights without deleting history.
 A task’s menu bar icon opens its history in the same compact panel.

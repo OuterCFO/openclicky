@@ -1,12 +1,19 @@
 import AppKit
 import SwiftUI
 
+nonisolated struct CompactTaskChoice: Identifiable {
+    let id: UUID
+    let title: String
+}
+
 @MainActor
 final class MenuBarPromptWindowManager {
     private var panel: NSPanel?
     private var previousApplication: NSRunningApplication?
 
     func show(entries: [CodexTranscriptEntry] = [], historyVisible: Bool = false, title: String = "OpenClicky",
+              taskChoices: [CompactTaskChoice] = [], selectTask: ((UUID) -> Void)? = nil,
+              newTask: (() -> Void)? = nil, removeTask: (() -> Void)? = nil,
               submit: @escaping (String) -> Void) {
         if let application = NSWorkspace.shared.frontmostApplication,
            application.processIdentifier != ProcessInfo.processInfo.processIdentifier {
@@ -26,7 +33,7 @@ final class MenuBarPromptWindowManager {
         }
         guard let panel else { return }
         panel.contentView = NSHostingView(rootView: MenuBarPromptView(
-            entries: entries, historyVisible: historyVisible, title: title,
+            entries: entries, historyVisible: historyVisible, title: title, taskChoices: taskChoices, selectTask: selectTask, newTask: newTask, removeTask: removeTask,
             submit: { [weak self] text in self?.dismiss(); submit(text) },
             cancel: { [weak self] in self?.dismiss() },
             resize: { [weak self] height in self?.resize(to: height) }
@@ -64,13 +71,18 @@ private struct MenuBarPromptView: View {
     let entries: [CodexTranscriptEntry]
     @State var historyVisible: Bool
     let title: String
+    let taskChoices: [CompactTaskChoice]
+    let selectTask: ((UUID) -> Void)?
+    let newTask: (() -> Void)?
+    let removeTask: (() -> Void)?
     let submit: (String) -> Void
     let cancel: () -> Void
     let resize: (CGFloat) -> Void
+    @State private var confirmRemoval = false
     @State private var draft = ""
     @State private var editorHeight: CGFloat = 32
 
-    private var totalHeight: CGFloat { editorHeight + 44 + (historyVisible ? 260 : 0) }
+    private var totalHeight: CGFloat { editorHeight + 70 + (historyVisible ? 260 : 0) }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -112,13 +124,23 @@ private struct MenuBarPromptView: View {
                 Button(action: cancel) { Image(systemName: "xmark").font(.system(size: 11)) }
                     .buttonStyle(.plain).accessibilityLabel("Close input")
             }
-            if !historyVisible {
-                HStack {
-                    Button("History") { historyVisible = true }
-                        .buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
-                    Spacer()
+            HStack(spacing: 14) {
+                Text(title).lineLimit(1).font(.system(size: 10)).foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if let selectTask {
+                    Menu("Tasks") {
+                        ForEach(taskChoices) { task in Button(task.title) { selectTask(task.id) } }
+                    }.menuStyle(.borderlessButton).fixedSize()
                 }
+                if !historyVisible { Button("History") { historyVisible = true } }
+                if let newTask { Button("New task", action: newTask) }
+                if removeTask != nil { Button("Remove task") { confirmRemoval = true } }
+            }.buttonStyle(.plain).font(.system(size: 11))
+            .confirmationDialog("Remove this task? Its history will be archived.", isPresented: $confirmRemoval) {
+                Button("Remove task", role: .destructive) { removeTask?() }
+                Button("Cancel", role: .cancel) { }
             }
+
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .frame(width: 440)
