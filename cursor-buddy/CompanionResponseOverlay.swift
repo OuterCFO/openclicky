@@ -272,11 +272,7 @@ private struct CompanionResponseOverlayView: View {
     var body: some View {
         if viewModel.isShowingResponse {
             HStack(alignment: .top, spacing: 8) {
-                Text(viewModel.streamingResponseText.isEmpty ? "..." : viewModel.streamingResponseText)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(DS.Colors.textPrimary)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                FormattedReplyText(text: viewModel.streamingResponseText.isEmpty ? "..." : viewModel.streamingResponseText)
                     .frame(maxWidth: 320, alignment: .leading)
                 Button {
                     viewModel.companion?.dismissCoachingOverlays()

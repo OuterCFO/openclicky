@@ -15898,21 +15898,8 @@ final class CompanionManager: ObservableObject {
 
     private static func voiceResponseCaptionText(from text: String) -> String {
         let parsed = parsePointingCoordinates(from: text).spokenText
-        let singleLine = parsed
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let maxCharacters = 260
-        guard singleLine.count > maxCharacters else { return singleLine }
-
-        let endIndex = singleLine.index(singleLine.startIndex, offsetBy: maxCharacters)
-        let prefix = String(singleLine[..<endIndex])
-        if let sentenceBreak = prefix.lastIndex(where: { ".!?".contains($0) }), sentenceBreak > prefix.startIndex {
-            return String(prefix[...sentenceBreak]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        if let lastSpace = prefix.lastIndex(of: " "), lastSpace > prefix.startIndex {
-            return String(prefix[..<lastSpace]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Keep the complete Markdown and paragraph boundaries for the reply renderer.
+        return parsed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func speakShortSystemResponse(

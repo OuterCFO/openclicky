@@ -6,7 +6,7 @@ Desktop integration remains a separate step.
 
 ## Use it
 
-1. Open Terminal and run `codex resume` with a current Codex CLI that uses the shared daemon.
+1. Open Terminal and run `codex resume --remote unix://$HOME/.codex/app-server-control/app-server-control.sock` to explicitly use the same server as OpenClicky.
 2. Select the terminal conversation you want the cursor to use and leave that terminal open.
 3. Press Command + Option to open OpenClicky, then click Connect.
 4. Select that live conversation and click Connect in the picker.
@@ -61,3 +61,10 @@ That avoids deleting files before the original session consumes them; inspect th
 No inference prompt or live action was injected into the user's session by the implementing agent.
 Automated verification covers the transport handshake and framing, live-only selection policy, preserved turn settings, persistence, and source compilation.
 The above live tests remain user-led.
+
+## Reply formatting
+
+The pointer reply preserves bold, italics, inline code, links, strikethrough, and paragraph breaks.
+Explicit `==highlighted text==` uses a yellow background; Markdown emphasis inside a highlight is preserved.
+The reply grows with the rendered text instead of cutting off at 260 characters.
+Formatting is rendered locally and does not change the connected conversation or model.
