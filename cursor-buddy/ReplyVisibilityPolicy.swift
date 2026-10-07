@@ -4,9 +4,12 @@ nonisolated struct ReplyVisibilityPolicy: Equatable, Sendable {
     private(set) var isDismissed = false
     var canPresent: Bool { !isDismissed }
 
-    /// Holding a reply prevents timeout dismissal, not the user's mouse movement.
-    static func shouldResumeFollowing(isPinned: Bool, mouseTravel: Double) -> Bool {
+    static let minimumPointingHold: Double = 3
+
+    /// Mouse movement cannot interrupt a pointing flight or the first three seconds at its target.
+    static func shouldResumeFollowing(isPinned: Bool, mouseTravel: Double, timeSinceArrival: Double) -> Bool {
         isPinned && mouseTravel.isFinite && mouseTravel > 24
+            && timeSinceArrival.isFinite && timeSinceArrival >= minimumPointingHold
     }
 
     mutating func dismiss() { isDismissed = true }

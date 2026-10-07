@@ -547,6 +547,7 @@ struct BlueCursorView: View {
     /// The cursor position at the moment navigation started, used to detect
     /// if the user moves the cursor enough to cancel the navigation.
     @State private var cursorPositionWhenNavigationStarted: CGPoint = .zero
+    @State private var replyTargetArrivedAt: Date?
 
     /// Timer driving the frame-by-frame bezier arc flight animation.
     /// Invalidated when the flight completes, is canceled, or the view disappears.
@@ -1172,7 +1173,7 @@ struct BlueCursorView: View {
             let mouse = convertScreenPointToSwiftUICoordinates(mouseLocation)
             let travel = Double(hypot(mouse.x - cursorPositionWhenNavigationStarted.x,
                                       mouse.y - cursorPositionWhenNavigationStarted.y))
-            if ReplyVisibilityPolicy.shouldResumeFollowing(isPinned: cursorState.replyPointerIsPinned, mouseTravel: travel) {
+            if ReplyVisibilityPolicy.shouldResumeFollowing(isPinned: cursorState.replyPointerIsPinned, mouseTravel: travel, timeSinceArrival: replyTargetArrivedAt.map { Date().timeIntervalSince($0) } ?? 0) {
                 cursorState.replyPointerIsPinned = false
                 finishNavigationAndResumeFollowing()
                 return
@@ -1284,6 +1285,7 @@ struct BlueCursorView: View {
 
     /// Starts animating the buddy toward a detected UI element location.
     private func startNavigatingToElement(screenLocation: CGPoint) {
+        replyTargetArrivedAt = nil
         // Don't interrupt welcome animation
         guard !showWelcome || welcomeText.isEmpty else { return }
 
@@ -1412,6 +1414,8 @@ struct BlueCursorView: View {
     /// so OpenClicky visibly reaches the parking area before flying back.
     private func startPointingAtElement() {
         buddyNavigationMode = .pointingAtTarget
+        replyTargetArrivedAt = Date()
+        cursorPositionWhenNavigationStarted = convertScreenPointToSwiftUICoordinates(NSEvent.mouseLocation)
 
         // Rotate back to default angle now that we've arrived
         buddyRotationDegrees = triangleBaseRotationDegrees
@@ -1524,6 +1528,7 @@ struct BlueCursorView: View {
     }
 
     private func resetNavigationStateAndResumeFollowing() {
+        replyTargetArrivedAt = nil
         navigationAnimationTimer?.invalidate()
         navigationAnimationTimer = nil
         buddyNavigationMode = .followingCursor

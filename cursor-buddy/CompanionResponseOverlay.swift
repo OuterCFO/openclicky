@@ -19,7 +19,6 @@ import ScreenCaptureKit
 final class CompanionResponseOverlayViewModel: ObservableObject {
     @Published var streamingResponseText: String = ""
     @Published var isShowingResponse: Bool = false
-    @Published var isHovered = false
     @Published var textHeight: CGFloat = 18
     @Published var textWidth: CGFloat = 280
     var presentation: CursorReplyPresentation { CursorReplyPresentation(streamingResponseText, requiresSummary: companion?.boundCodexThreadID != nil) }
@@ -48,6 +47,7 @@ final class CompanionResponseOverlayManager {
         spaceObserver = workspaceNotifications.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.isVisible, self.visibilityPolicy.canPresent else { return }
+                self.lastCursorTrackingOrigin = nil
                 self.repositionPanelNearCursor()
                 self.overlayPanel?.orderFrontRegardless()
             }
@@ -80,7 +80,6 @@ final class CompanionResponseOverlayManager {
         if clearText {
             overlayViewModel.streamingResponseText = ""
         }
-        overlayViewModel.isHovered = false
         overlayViewModel.isShowingResponse = true
         createOverlayPanelIfNeeded()
         startCursorTracking()
@@ -115,7 +114,6 @@ final class CompanionResponseOverlayManager {
     func hideOverlay(resetReply: Bool = true) {
         if resetReply { visibilityPolicy.beginNewReply() }
         stopCursorTracking()
-        overlayViewModel.isHovered = false
         overlayViewModel.isShowingResponse = false
         overlayViewModel.streamingResponseText = ""
         overlayPanel?.orderOut(nil)
@@ -144,7 +142,7 @@ final class CompanionResponseOverlayManager {
         responseOverlayPanel.isOpaque = false
         responseOverlayPanel.backgroundColor = .clear
         responseOverlayPanel.hasShadow = false
-        // The dismiss button needs mouse events; the bubble freezes on hover.
+        // The dismiss button needs mouse events; pointer tracking continues during hover.
         responseOverlayPanel.ignoresMouseEvents = false
         responseOverlayPanel.hidesOnDeactivate = false
         responseOverlayPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -193,7 +191,7 @@ final class CompanionResponseOverlayManager {
     }
 
     private func repositionPanelNearCursor() {
-        guard let overlayPanel, !overlayViewModel.isHovered else { return }
+        guard let overlayPanel else { return }
 
         guard let pointerLocation = overlayViewModel.companion?.cursorOverlayState.aiPointerScreenLocation else { return }
         overlayPanel.alphaValue = 1
@@ -322,11 +320,6 @@ private struct CompanionResponseOverlayView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .onHover { hovered in
-                DispatchQueue.main.async {
-                    viewModel.isHovered = hovered && viewModel.isShowingResponse
-                }
-            }
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(DS.Colors.surface1.opacity(0.96))
