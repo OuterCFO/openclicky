@@ -1164,9 +1164,20 @@ struct BlueCursorView: View {
         // @State-backed `buddyIsVisibleOnThisScreen` must be read via SwiftUI's
         // live indirection — capturing `self` in the background closure would
         // snapshot stale state, and `[weak self]` is illegal on a value type.
-        guard buddyIsVisibleOnThisScreen else { return }
         let mouseLocation = NSEvent.mouseLocation
+        // Update screen ownership before skipping hidden views, including display crossings.
         isCursorOnThisScreen = screenFrame.contains(mouseLocation)
+        guard buddyIsVisibleOnThisScreen else { return }
+        if buddyNavigationMode != .followingCursor {
+            let mouse = convertScreenPointToSwiftUICoordinates(mouseLocation)
+            let travel = Double(hypot(mouse.x - cursorPositionWhenNavigationStarted.x,
+                                      mouse.y - cursorPositionWhenNavigationStarted.y))
+            if ReplyVisibilityPolicy.shouldResumeFollowing(isPinned: cursorState.replyPointerIsPinned, mouseTravel: travel) {
+                cursorState.replyPointerIsPinned = false
+                finishNavigationAndResumeFollowing()
+                return
+            }
+        }
 
         // During forward flight or pointing, the buddy is NOT interrupted by
         // mouse movement — it completes its full animation and return flight.
@@ -1496,7 +1507,7 @@ struct BlueCursorView: View {
 
     /// Cancels an in-progress navigation because the user moved the cursor.
     private func cancelNavigationAndResumeFollowing() {
-        guard !cursorState.replyPointerIsPinned else { return }
+        cursorState.replyPointerIsPinned = false
         navigationAnimationTimer?.invalidate()
         navigationAnimationTimer = nil
         navigationBubbleText = ""

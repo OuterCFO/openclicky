@@ -115,6 +115,13 @@ expect(!visibility.canPresent, "repeated dismissal stays dismissed")
 visibility.beginNewReply()
 expect(visibility.canPresent, "new question resets dismissal")
 
+precondition(!ReplyVisibilityPolicy.shouldResumeFollowing(isPinned: true, mouseTravel: 0))
+precondition(!ReplyVisibilityPolicy.shouldResumeFollowing(isPinned: true, mouseTravel: 12))
+precondition(ReplyVisibilityPolicy.shouldResumeFollowing(isPinned: true, mouseTravel: 25))
+precondition(!ReplyVisibilityPolicy.shouldResumeFollowing(isPinned: false, mouseTravel: 100))
+precondition(!ReplyVisibilityPolicy.shouldResumeFollowing(isPinned: true, mouseTravel: .nan))
+print("PASS: reply persists at rest but intentional mouse movement resumes following")
+
 if failures == 0 {
     print("\nALL PASSED")
     exit(0)

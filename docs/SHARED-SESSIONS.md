@@ -84,7 +84,9 @@ Reconnect reuses that task; legacy duplicate links are archived automatically wh
 Command + Option continues the selected task; only New task starts an independent conversation.
 Each submitted cursor request restores the app-owned pointer and reply display immediately.
 Linked requests capture screen context regardless of prompt phrasing.
-The reply pointer remains at its target until manual dismissal or another question, and display windows reassert visibility after a macOS Space switch.
+The reply stays visible until manual dismissal or another question.
+The pointer pauses at a target, then resumes following when you move your mouse; the reply moves with it.
+Display windows reassert visibility after a macOS Space switch.
 A valid model-provided screenshot coordinate moves the pointer to that target.
 Without a valid coordinate, the reply stays at a neutral nearby position and says No verified screen target.
 Out-of-range or non-finite coordinates are rejected instead of being clamped to an unrelated screen edge.
