@@ -3666,7 +3666,7 @@ final class CompanionManager: ObservableObject {
     private func bindShortcutTransitions() {
         tutorDictationCancellable = globalPushToTalkShortcutMonitor.tutorDictationPublisher
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] in self?.showWisprTutorInput() }
+            .sink { [weak self] in self?.showExternalDictationInput() }
 
         shortcutTransitionCancellable = globalPushToTalkShortcutMonitor
             .shortcutTransitionPublisher
@@ -8703,7 +8703,7 @@ final class CompanionManager: ObservableObject {
         }
     }
 
-    func showWisprTutorInput() {
+    func showExternalDictationInput() {
         showTutorInput(startDictation: true)
     }
 
@@ -8920,9 +8920,15 @@ final class CompanionManager: ObservableObject {
         guard startDictation else { return }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(350))
-            guard let url = URL(string: "wispr-flow://start-hands-free") else { return }
-            let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = false
-            NSWorkspace.shared.open(url, configuration: configuration) { _, _ in }
+            do {
+                try await OpenSuperWhisperDictation.trigger()
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "OpenSuperWhisper dictation unavailable"
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
         }
     }
 

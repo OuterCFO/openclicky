@@ -50,8 +50,8 @@ struct cursor_buddyApp: App {
                 Button("Show Chat…") {
                     NotificationCenter.default.post(name: .clickyShowPanel, object: nil)
                 }
-                Button("Dictate with Wispr Flow…") {
-                    appDelegate.showWisprTutorInputFromMenu()
+                Button("Dictate with OpenSuperWhisper…") {
+                    appDelegate.showExternalDictationInputFromMenu()
                 }
                 .keyboardShortcut("j", modifiers: [.command, .option])
 
@@ -171,7 +171,7 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDel
     func captureTutorReview() { companionManager.debugCaptureTutorReview() }
     #endif
 
-    func showWisprTutorInputFromMenu() { companionManager.showWisprTutorInput() }
+    func showExternalDictationInputFromMenu() { companionManager.showExternalDictationInput() }
     func dismissCoachingOverlaysFromMenu() { companionManager.dismissCoachingOverlays() }
 
     func showNewTaskInputFromMenu() { companionManager.startNewCompactTask() }

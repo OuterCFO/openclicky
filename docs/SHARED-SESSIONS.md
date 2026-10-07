@@ -11,7 +11,7 @@ Desktop integration remains a separate step.
 3. Press Command + Option to open OpenClicky, then click Connect.
 4. Select that live conversation and click Connect in the picker.
 5. The cursor task is labeled `Codex: <conversation title>`.
-   Submit questions through the existing input and Wispr workflow.
+   Submit questions through the existing input and local dictation workflow.
 6. Open History to refresh the original Codex transcript in the same compact panel.
    The terminal contains the complete turn and tool history.
 

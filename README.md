@@ -4,12 +4,12 @@
 Ask about what you are working on, get an answer beside an AI pointer, and keep using your app.
 Use it for navigation, troubleshooting, learning software, understanding unfamiliar interfaces, and ongoing computer work.
 
-This standalone project builds on [Jason Kneen's MIT-licensed OpenClicky](https://github.com/jasonkneen/openclicky) and adds a compact, no-notch workflow with Wispr Flow dictation and ChatGPT-backed Codex sessions.
+This standalone project builds on [Jason Kneen's MIT-licensed OpenClicky](https://github.com/jasonkneen/openclicky) and adds a compact, no-notch workflow with OpenSuperWhisper local dictation and ChatGPT-backed Codex sessions.
 It is independent of the commercial Clicky product and of OpenAI.
 
 ## What this project adds
 
-- **Command + Option** opens a focused input and starts Wispr Flow.
+- **Command + Option** opens a focused input and starts OpenSuperWhisper.
 - Multiline prompts wrap and grow; longer drafts scroll.
 - New task, Tasks, and Remove task controls live in the compact panel; independent screen conversations persist across restarts.
 - Connect links a cursor task to a live shared-server Codex terminal conversation, preserving its thread, settings, and history.
@@ -23,7 +23,7 @@ It is independent of the commercial Clicky product and of OpenAI.
 
 The interface runs locally; AI inference on the default route runs remotely through your ChatGPT-backed Codex account.
 No local LLM is required.
-The code is free under the MIT license, but provider access, subscription limits, and Wispr's own service terms still apply.
+The code is free under the MIT license, but provider access, subscription limits still apply.
 
 ## Use it with a Codex conversation
 
@@ -54,16 +54,16 @@ open cursor-buddy.xcodeproj
 3. Copy the signed `OpenClicky.app` build product to `/Applications` and launch that copy.
 4. Sign in to Codex with your own ChatGPT account, or let OpenClicky's sign-in flow complete.
 5. Grant Screen Recording and Accessibility to the installed OpenClicky app.
-6. Install and sign in to [Wispr Flow](https://wisprflow.ai/) if you want the dictation shortcut.
+6. Install [OpenSuperWhisper](https://github.com/Starmel/OpenSuperWhisper), set its recording shortcut, and turn off Hold to record.
 
 See [the complete setup guide](docs/SETUP.md), including sign-in, permissions, signing, and a first-use checklist.
-You can type instead of using Wispr.
+You can type instead of using local dictation.
 
 ## Everyday use
 
 | Action | Result |
 | --- | --- |
-| Press and release Command + Option | Open input and start Wispr dictation |
+| Press and release Command + Option | Open input and start local dictation |
 | Return or Send | Submit and close the input |
 | Shift + Return | Insert a newline |
 | History or a task menu bar icon | Review that conversation in the compact panel |
@@ -92,7 +92,7 @@ Screen guidance requires a backend capable of understanding the supplied images.
 ## Privacy and authority
 
 Screen content and prompts are sent to the selected model service.
-Wispr handles dictation separately.
+OpenSuperWhisper handles dictation locally and independently of the connected LLM.
 Local conversation, memory, logs, and screenshot files can contain private information.
 Explicit agent tasks can have broader tool access than the screen-answer path.
 Read [SECURITY.md](SECURITY.md) before enabling optional automation or exposing the local control bridge.

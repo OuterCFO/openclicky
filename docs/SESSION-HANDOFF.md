@@ -10,7 +10,7 @@ Desktop chats hosted by a separate server remain unsupported for direct attachme
 
 ## Current controls
 
-Command + Option opens the compact input, focuses it, and invokes external Wispr Flow dictation.
+Command + Option opens the compact input, focuses it, and invokes external OpenSuperWhisper local dictation.
 Return submits and hides input; Shift + Return inserts a newline.
 The compact panel has New task, Tasks, and Remove task controls.
 New task starts an independent screen conversation; Tasks selects an existing conversation.
@@ -50,7 +50,7 @@ Keep the same task selected for follow-ups; start a new task only when requested
 New source builds default to GPT-6 Luna (`gpt-6-luna`) and medium effort.
 Existing installs preserve saved choices; inspect only model preferences when troubleshooting.
 OpenClicky’s model selection is independent of the Codex desktop chat’s model.
-Wispr is a separate dictation service.
+OpenSuperWhisper is a separate local dictation app.
 Other provider adapters exist, but neither arbitrary provider compatibility nor all alternate routes have been verified.
 Screenshots and prompts can be sent to the selected remote provider; this is not a local LLM setup.
 
