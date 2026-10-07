@@ -66,7 +66,7 @@ extension CompanionManager {
         return trimmedPrefill + " " + continuation
     }
 
-    /// Parses a [POINT:x,y:label:screenN] or [POINT:none] tag from the end of Claude's response.
+    /// Parses a dedicated [POINT:x,y:label:screenN] or [POINT:none] line, or a legacy trailing tag.
     /// Returns the spoken text (tag removed) and the optional coordinate + label + screen number.
     static func parsePointingCoordinates(from responseText: String) -> PointingParseResult {
         if let rectangleResult = parseRectangleGuidance(from: responseText) {
@@ -74,6 +74,11 @@ extension CompanionManager {
         }
         if let scribbleResult = parseScribbleGuidance(from: responseText) {
             return scribbleResult
+        }
+
+        if let directive = CursorPointDirective.extract(responseText) {
+            return PointingParseResult(spokenText: directive.spokenText, coordinate: directive.coordinate,
+                                      elementLabel: directive.label, screenNumber: directive.screenNumber, visualOverlay: nil)
         }
 
         // Match [POINT:none] or [POINT:123,456:label] or [POINT:123,456:label:screen2]

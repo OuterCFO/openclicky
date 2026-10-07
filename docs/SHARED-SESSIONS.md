@@ -91,3 +91,6 @@ A valid model-provided screenshot coordinate moves the pointer to that target.
 Without a valid coordinate, the reply stays at a neutral nearby position and says No verified screen target.
 Out-of-range or non-finite coordinates are rejected instead of being clamped to an unrelated screen edge.
 These rules guarantee app presentation, not perfect visual target identification by a model.
+
+Pointing directives are parsed independently of concise summaries.
+A dedicated POINT line may precede or follow the cursor_reply block; quoted or fenced examples do not trigger movement.

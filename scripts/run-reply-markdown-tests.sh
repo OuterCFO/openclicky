@@ -38,8 +38,18 @@ let huge = CursorReplyPresentation("<cursor_reply>" + String(repeating: "word ",
 precondition(huge.compact.split(whereSeparator: { $0.isWhitespace }).count <= 60 && huge.compact.count <= 600)
 precondition(CursorReplyPresentation("<cursor_reply>Click here. [POINT:1,2:target]</cursor_reply>").compact == "Click here.")
 precondition(CursorReplyPresentation("Short standalone answer.", requiresSummary: false).compact == "Short standalone answer.")
+let pointBefore = "Detailed answer.\n[POINT:103,69:Codex]\n<cursor_reply>\nLook at Codex.\n</cursor_reply>"
+let directive = CursorPointDirective.extract(pointBefore)!
+precondition(directive.coordinate == CGPoint(x: 103, y: 69) && directive.label == "Codex")
+precondition(!directive.spokenText.contains("[POINT:") && CursorReplyPresentation(directive.spokenText).compact == "Look at Codex.")
+precondition(CursorPointDirective.extract("<cursor_reply>Short.</cursor_reply>\n[POINT:789,617:cat command:screen2]")?.screenNumber == 2)
+precondition(CursorPointDirective.extract("```text\n[POINT:1,2:example]\n```") == nil)
+precondition(CursorPointDirective.extract("The `[POINT:1,2:example]` tag is quoted.") == nil)
+precondition(CursorPointDirective.extract("<cursor_reply>\n[POINT:1,2:example]\n</cursor_reply>") == nil)
+precondition(CursorPointDirective.extract("[POINT:none]\n<cursor_reply>No target.</cursor_reply>")?.coordinate == nil)
+print("PASS: real point-before-summary regression, metadata isolation, screen selection, and quoted-example rejection")
 print("PASS: screenshot regression, dedicated summary isolation, code examples, absent/partial summary, hard length limits, and control metadata")
 print("PASS: reply bold, italics, paragraphs, code, nested highlight, links, and partial Markdown")
 SWIFT
-swiftc "$ROOT/cursor-buddy/FormattedReplyText.swift" "$OUT/main.swift" -o "$OUT/check"
+swiftc "$ROOT/cursor-buddy/FormattedReplyText.swift" "$ROOT/cursor-buddy/CursorPointDirective.swift" "$OUT/main.swift" -o "$OUT/check"
 "$OUT/check"
