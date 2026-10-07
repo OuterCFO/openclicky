@@ -30,6 +30,7 @@ extension CompanionManager {
     func sendTranscriptToClaudeWithScreenshot(transcript: String, forceScreenContext: Bool = false) {
         rememberMainConversationUserPrompt(transcript, source: "voice_response")
         interruptCurrentVoiceResponse()
+        beginCursorReplyPresentation()
         let timing = activeRequestTiming
         let plannedVoiceAnalysisModelID: String? = {
             let selectedVoiceResponseModel = OpenClickyModelCatalog.voiceResponseModel(withID: selectedModel)
@@ -112,7 +113,7 @@ extension CompanionManager {
                 // visual context. Text-only turns should not pay the capture,
                 // base64, upload, and vision-processing latency tax.
                 let captureStartedAt = Date()
-                let shouldAttachScreenContext = forceScreenContext || circleHandoff != nil || Self.shouldAttachScreenContext(
+                let shouldAttachScreenContext = boundCodexThreadID != nil || forceScreenContext || circleHandoff != nil || Self.shouldAttachScreenContext(
                     to: transcript,
                     recentConversationHistory: historyForAPI
                 )
@@ -495,10 +496,10 @@ extension CompanionManager {
                 // Switch to idle BEFORE setting the location so the triangle
                 // becomes visible and can fly to the target. Without this, the
                 // spinner hides the triangle and the flight animation is invisible.
-                let hasVisualGuidance = parseResult.coordinate != nil || parseResult.visualOverlay != nil
-                if hasVisualGuidance {
-                    self.voiceState = .idle
-                }
+                // Reply display must not depend on TTS or a model deciding to point.
+                self.voiceState = .idle
+                self.cursorOverlayState.replyPointerIsPinned = true
+                self.showCursorOverlayIfAvailable()
 
                 // Pick the screen capture for the buddy to point on.
                 //
@@ -534,7 +535,11 @@ extension CompanionManager {
                 }()
 
                 if let pointCoordinate = parseResult.coordinate,
-                   let targetScreenCapture {
+                   let targetScreenCapture,
+                   SharedCodexSessionContract.isValidScreenshotPoint(pointCoordinate,
+                       width: targetScreenCapture.screenshotWidthInPixels,
+                       height: targetScreenCapture.screenshotHeightInPixels) {
+                    self.cursorOverlayState.replyHasVerifiedTarget = true
                     // Claude's coordinates are in the screenshot's pixel space
                     // (top-left origin, e.g. 1280x831). Scale to the display's
                     // point space (e.g. 1512x982), then convert to AppKit global coords.
@@ -589,11 +594,11 @@ extension CompanionManager {
                     print("🎯 Visual guidance overlay: \(visualOverlay.kind.rawValue) → \"\(parseResult.elementLabel ?? "overlay")\"")
                 } else {
                     print("🎯 Element pointing: \(parseResult.elementLabel ?? "no element")")
-                    await attemptProactiveElementPointingIfUseful(
+                    if self.boundCodexThreadID == nil { await attemptProactiveElementPointingIfUseful(
                         transcript: transcript,
                         spokenText: spokenText,
                         screenCaptures: screenCaptures
-                    )
+                    ) }
                 }
 
                 // Save this exchange to conversation history (with the point tag

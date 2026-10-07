@@ -20,8 +20,8 @@ nonisolated struct CompanionConversationStore: Codable {
         activeID = id
     }
     static func load(from defaults: UserDefaults = .standard, legacyEntries: [CodexTranscriptEntry] = [], summary: String? = nil) -> Self {
-        if let data = defaults.data(forKey: defaultsKey), let value = try? JSONDecoder().decode(Self.self, from: data),
-           value.conversations.contains(where: { $0.id == value.activeID && !$0.archived }) { return value }
+        if let data = defaults.data(forKey: defaultsKey), var value = try? JSONDecoder().decode(Self.self, from: data),
+           value.conversations.contains(where: { $0.id == value.activeID && !$0.archived }) { value.collapseDuplicateLinks(); return value }
         return Self(legacyEntries: legacyEntries, summary: summary)
     }
     mutating func update(entries: [CodexTranscriptEntry], summary: String?) {
@@ -34,6 +34,33 @@ nonisolated struct CompanionConversationStore: Codable {
         conversations.append(task)
         activeID = task.id
     }
+    /// A live backend thread has one local identity, regardless of invocation or reconnect.
+    mutating func bind(threadID: String, title: String, entries: [CodexTranscriptEntry]) {
+        let existing = conversations.first(where: { $0.id == activeID && !$0.archived && $0.boundThreadID == threadID })
+            ?? conversations.first(where: { !$0.archived && $0.boundThreadID == threadID })
+        if let existing { activeID = existing.id } else { startNew() }
+        guard let index = conversations.firstIndex(where: { $0.id == activeID }) else { return }
+        conversations[index].boundThreadID = threadID
+        conversations[index].boundThreadTitle = title
+        conversations[index].entries = entries
+        conversations[index].summary = nil
+        collapseDuplicateLinks()
+    }
+
+    mutating func collapseDuplicateLinks() {
+        var canonical: [String: UUID] = [:]
+        if let selected = conversations.first(where: { $0.id == activeID && !$0.archived }), let thread = selected.boundThreadID {
+            canonical[thread] = selected.id
+        }
+        for index in conversations.indices where !conversations[index].archived {
+            guard let thread = conversations[index].boundThreadID else { continue }
+            if let keeper = canonical[thread], keeper != conversations[index].id {
+                // Archive duplicate links, retaining their cached history for recovery.
+                conversations[index].archived = true
+            } else { canonical[thread] = conversations[index].id }
+        }
+    }
+
     @discardableResult mutating func select(_ id: UUID) -> Bool {
         guard conversations.contains(where: { $0.id == id && !$0.archived }) else { return false }
         activeID = id

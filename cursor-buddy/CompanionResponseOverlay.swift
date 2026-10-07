@@ -41,6 +41,25 @@ final class CompanionResponseOverlayManager {
     #endif
     private var cursorTrackingTimer: Timer?
     private var lastCursorTrackingOrigin: NSPoint?
+    private let workspaceNotifications = NSWorkspace.shared.notificationCenter
+    private var spaceObserver: NSObjectProtocol?
+
+    init() {
+        spaceObserver = workspaceNotifications.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isVisible, self.visibilityPolicy.canPresent else { return }
+                self.repositionPanelNearCursor()
+                self.overlayPanel?.orderFrontRegardless()
+            }
+        }
+    }
+
+    deinit {
+        if let spaceObserver { workspaceNotifications.removeObserver(spaceObserver) }
+    }
+
+    func beginNewReply() { visibilityPolicy.beginNewReply() }
+
     private var visibilityPolicy = ReplyVisibilityPolicy()
     /// True until dismissal or replacement by a new question.
     private(set) var isVisible: Bool = false
@@ -298,7 +317,7 @@ private struct CompanionResponseOverlayView: View {
                 .accessibilityLabel("Dismiss coaching reply")
                 .help("Dismiss reply and highlights (Esc)")
             }
-            Text("Quick reply · Full answer in History")
+            Text(viewModel.companion?.cursorOverlayState.replyHasVerifiedTarget == true ? "Quick reply · Full answer in History" : "Quick reply · No verified screen target")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 10)

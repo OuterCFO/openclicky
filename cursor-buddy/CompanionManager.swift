@@ -65,6 +65,8 @@ final class CursorOverlayState: ObservableObject {
     @Published var detectedElementDisplayFrame: CGRect?
     @Published var detectedElementBubbleText: String?
     @Published var detectedElementReturnsImmediately: Bool = false
+    @Published var replyPointerIsPinned = false
+    @Published var replyHasVerifiedTarget = false
     @Published var agentTaskBubbleText: String?
     @Published var externalPrimaryCaptionText: String?
     @Published var externalPrimaryCaptionAccentHex: String?
@@ -8717,6 +8719,8 @@ final class CompanionManager: ObservableObject {
         companionConversations.save()
     }
     private func refreshCompanionTaskIcons() {
+        companionConversations.collapseDuplicateLinks()
+        companionConversations.save()
         let ids = Set(companionConversations.conversations.map(\.id))
         agentDockItems.removeAll { ids.contains($0.id) }
         for task in companionConversations.conversations where !task.archived {
@@ -8728,6 +8732,7 @@ final class CompanionManager: ObservableObject {
                 suggestedNextActions: [], createdAt: task.entries.first?.createdAt ?? Date()))
         }
         showAgentDockWindowNearCurrentScreen()
+        agentMenuBarStatusManager.scheduleSync(companionManager: self)
         scheduleWidgetSnapshotPublish()
     }
     private func ensureTutorDockItem() { saveCompactConversation(); refreshCompanionTaskIcons() }
@@ -8738,7 +8743,7 @@ final class CompanionManager: ObservableObject {
         client.onStatus = { [weak self] status in
             self?.sharedSessionStatus = status
             if status.hasPrefix("Waiting"), self?.currentResponseTask != nil {
-                self?.updateVoiceResponseCaption(status, force: true, updatesDock: false)
+                self?.updateVoiceResponseCaption("<cursor_reply>" + status + "</cursor_reply>", force: true, updatesDock: false)
             }
         }
         return client
@@ -8773,11 +8778,7 @@ final class CompanionManager: ObservableObject {
                 let entries = try await self.sharedCodexSession.transcript(for: chosen.id)
                 self.dismissCoachingOverlays()
                 self.saveCompactConversation()
-                self.companionConversations.startNew()
-                let index = self.companionConversations.conversations.count - 1
-                self.companionConversations.conversations[index].boundThreadID = chosen.id
-                self.companionConversations.conversations[index].boundThreadTitle = "Codex: " + chosen.title
-                self.companionConversations.update(entries: entries, summary: nil)
+                self.companionConversations.bind(threadID: chosen.id, title: "Codex: " + chosen.title, entries: entries)
                 self.activateCompactConversation()
                 self.showTutorConversation()
             } catch {
@@ -13986,13 +13987,35 @@ final class CompanionManager: ObservableObject {
         return longer.hasPrefix(shorter)
     }
 
+    /// Every submitted cursor request presents a real app-owned pointer/reply immediately.
+    func beginCursorReplyPresentation() {
+        clearDetectedElementLocation()
+        cursorOverlayState.replyPointerIsPinned = true
+        cursorOverlayState.replyHasVerifiedTarget = false
+        let mouse = NSEvent.mouseLocation
+        if let screen = NSScreen.screen(containingOrNearestTo: mouse) {
+            let frame = screen.visibleFrame
+            let anchor = CGPoint(x: min(max(mouse.x + 35, frame.minX + 20), frame.maxX - 20),
+                                 y: min(max(mouse.y - 25, frame.minY + 20), frame.maxY - 20))
+            detectedElementDisplayFrame = screen.frame
+            detectedElementScreenLocation = anchor
+            cursorOverlayState.aiPointerScreenLocation = anchor
+        }
+        showCursorOverlayIfAvailable()
+        responseOverlayManager.beginNewReply()
+        updateVoiceResponseCaption("<cursor_reply>Working…</cursor_reply>", force: true, updatesDock: false)
+    }
+
     func ensureCursorOverlayVisibleForAgentTask() {
         showCursorOverlayIfAvailable()
     }
 
     func showCursorOverlayIfAvailable() {
         guard hasAccessibilityPermission else { return }
-        guard !isOverlayVisible || !overlayWindowManager.isShowingOverlay() else { return }
+        guard !isOverlayVisible || !overlayWindowManager.isShowingOverlay() else {
+            overlayWindowManager.reassertOverlayWindows()
+            return
+        }
         overlayWindowManager.hasShownOverlayBefore = true
         overlayWindowManager.showOverlay(onScreens: NSScreen.screens, companionManager: self)
         isOverlayVisible = true
@@ -15440,6 +15463,7 @@ final class CompanionManager: ObservableObject {
     }
 
     func interruptCurrentVoiceResponse() {
+        cursorOverlayState.replyPointerIsPinned = false
         currentVoiceResponseCancellationHandler?("interrupted")
         currentVoiceResponseCancellationHandler = nil
         currentVoiceResponseRequestID = nil

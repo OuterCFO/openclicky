@@ -1411,6 +1411,12 @@ struct BlueCursorView: View {
         navigationBubbleSize = .zero
         navigationBubbleScale = 0.5
 
+        if cursorState.replyPointerIsPinned {
+            navigationBubbleOpacity = 0
+            navigationBubbleScale = 1
+            return // Keep the pointer at its target; the response panel is the only caption.
+        }
+
         if cursorState.detectedElementReturnsImmediately {
             navigationBubbleOpacity = 0.0
             navigationBubbleScale = 1.0
@@ -1473,6 +1479,7 @@ struct BlueCursorView: View {
 
     /// Flies the buddy back to the current cursor position after pointing is done.
     private func startFlyingBackToCursor() {
+        guard !cursorState.replyPointerIsPinned else { return }
         let mouseLocation = NSEvent.mouseLocation
         let cursorInSwiftUI = convertScreenPointToSwiftUICoordinates(mouseLocation)
         let cursorWithTrackingOffset = CGPoint(x: cursorInSwiftUI.x + 35, y: cursorInSwiftUI.y + 25)
@@ -1489,6 +1496,7 @@ struct BlueCursorView: View {
 
     /// Cancels an in-progress navigation because the user moved the cursor.
     private func cancelNavigationAndResumeFollowing() {
+        guard !cursorState.replyPointerIsPinned else { return }
         navigationAnimationTimer?.invalidate()
         navigationAnimationTimer = nil
         navigationBubbleText = ""
@@ -3009,11 +3017,16 @@ final class ClickyAgentDockWindowManager {
 class OverlayWindowManager {
     private var overlayWindows: [OverlayWindow] = []
     private weak var companionManager: CompanionManager?
+    private let workspaceNotifications = NSWorkspace.shared.notificationCenter
+    private var spaceObserver: NSObjectProtocol?
     private var displayConfigurationObserver: NSObjectProtocol?
     private var interactivityTimer: Timer?
     var hasShownOverlayBefore = false
 
     init() {
+        spaceObserver = workspaceNotifications.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.reassertOverlayWindows() }
+        }
         displayConfigurationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -3026,6 +3039,7 @@ class OverlayWindowManager {
     }
 
     deinit {
+        if let spaceObserver { workspaceNotifications.removeObserver(spaceObserver) }
         // The calibration event tap / key monitors are @MainActor resources and
         // cannot be touched from this nonisolated deinit. They are torn down in
         // stopCalibrationKeyboardTracking() via every hideOverlay/fadeOut path.
@@ -3121,6 +3135,13 @@ class OverlayWindowManager {
                 window.contentView = nil
             }
         })
+    }
+
+    func reassertOverlayWindows() {
+        for window in overlayWindows {
+            OpenClickyWindowLevels.applyCursorOverlayLevel(to: window)
+            window.orderFrontRegardless()
+        }
     }
 
     func isShowingOverlay() -> Bool {
