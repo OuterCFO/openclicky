@@ -189,7 +189,7 @@ final class CodexSharedSessionClient {
         let eventTurn = params["turnId"] as? String ?? (params["turn"] as? [String: Any])?["id"] as? String
         guard eventTurn == turnID else { return }
         if method == "item/agentMessage/delta", let delta = params["delta"] as? String {
-            text += delta; onText?(delta)
+            text += delta; onText?(text)
         } else if method == "item/completed", let item = params["item"] as? [String: Any],
                   item["type"] as? String == "agentMessage", let final = item["text"] as? String {
             if item["phase"] as? String == "final_answer" || item["phase"] as? String == "final" { finalText = final }
@@ -247,7 +247,7 @@ final class CodexSharedSessionClient {
     }
 
     private static func displayHint(images: [(data: Data, label: String)]) -> String {
-        let compactHint = "\n\n[Cursor presentation: keep your full response as detailed as useful. Also append a self-contained <cursor_reply>short Markdown answer</cursor_reply> for the small cursor bubble. Use 1-3 short sentences or steps, roughly 60 words maximum. Keep necessary commands, paths, and cautions exact. This is a display summary, not a replacement for the full answer.]"
+        let compactHint = "\n\n[Cursor presentation: keep your full response as detailed as useful. Also append a dedicated <cursor_reply> block for the small cursor bubble, with its opening and closing tags on separate lines. Put only the direct answer or immediate next action inside it. Use at most 60 words and 600 characters. No recap, commentary about the transcript, display instructions, tags, or POINT markers inside that block. Keep necessary commands, paths, and cautions exact. This is a display summary, not a replacement for the full answer.]"
         guard !images.isEmpty else { return compactHint }
         return "\n\n[OpenClicky display hint: screenshots are attached to this same conversation. For a relevant visible target, include [POINT:x,y:label] with x/y as screenshot pixels. Do not invent actions or targets. Screens: " + images.map(\.label).joined(separator: "; ") + "]" + compactHint
     }

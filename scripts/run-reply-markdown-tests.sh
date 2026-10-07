@@ -25,13 +25,20 @@ let longHeight = ReplyMarkdown.height(String(repeating: "This wraps across sever
 precondition(longHeight > shortHeight * 4)
 precondition(ReplyMarkdown.height("line one\n\nline two", width: 240) > shortHeight)
 let full = "Detailed explanation.\n\n```sh\ncd ~/Documents/project\n```\n\nMore details."
-let preview = CursorReplyPresentation(full)
-precondition(preview.full == full && preview.compact.contains("cd ~/Documents/project") && !preview.hasSummary)
-let summarized = CursorReplyPresentation(full + "\n<cursor_reply>Run **cd** first.</cursor_reply>")
-precondition(summarized.full == full && summarized.compact == "Run **cd** first." && summarized.hasSummary)
-let streaming = CursorReplyPresentation(full + "\n<cursor_reply>Run **cd**")
-precondition(!streaming.full.contains("<cursor_reply>") && streaming.compact == "Run **cd**")
-print("PASS: native wrapped height grows, paragraph height, compact/full separation, commands, and streaming summary")
+let quoted = "The `<cursor_reply>` and [POINT:...] strings are conversation text.\n\nOur next practice is deliberately lengthy.\n\n<cursor_reply>\nType **help** in the right pane.\n</cursor_reply>"
+let isolated = CursorReplyPresentation(quoted)
+precondition(isolated.compact == "Type **help** in the right pane." && isolated.hasSummary)
+precondition(!isolated.compact.contains("conversation text") && !isolated.compact.contains("cursor_reply"))
+let fenced = "```xml\n<cursor_reply>\nNot a reply.\n</cursor_reply>\n```\n<cursor_reply>Real answer.</cursor_reply>"
+precondition(CursorReplyPresentation(fenced).compact == "Real answer.")
+precondition(CursorReplyPresentation(full).compact == CursorReplyPresentation.unavailable)
+let unfinished = CursorReplyPresentation(full + "\n<cursor_reply>Run **cd**")
+precondition(!unfinished.hasSummary && !unfinished.compact.contains("Detailed"))
+let huge = CursorReplyPresentation("<cursor_reply>" + String(repeating: "word ", count: 100) + "</cursor_reply>")
+precondition(huge.compact.split(whereSeparator: { $0.isWhitespace }).count <= 60 && huge.compact.count <= 600)
+precondition(CursorReplyPresentation("<cursor_reply>Click here. [POINT:1,2:target]</cursor_reply>").compact == "Click here.")
+precondition(CursorReplyPresentation("Short standalone answer.", requiresSummary: false).compact == "Short standalone answer.")
+print("PASS: screenshot regression, dedicated summary isolation, code examples, absent/partial summary, hard length limits, and control metadata")
 print("PASS: reply bold, italics, paragraphs, code, nested highlight, links, and partial Markdown")
 SWIFT
 swiftc "$ROOT/cursor-buddy/FormattedReplyText.swift" "$OUT/main.swift" -o "$OUT/check"

@@ -68,8 +68,11 @@ The pointer reply preserves bold, italics, inline code, links, strikethrough, an
 Explicit `==highlighted text==` uses a yellow background; Markdown emphasis inside a highlight is preserved.
 The reply uses measured native text height and grows with the rendered text.
 Long replies scroll within a bounded panel rather than being clipped.
-Compact mode is the default, with a Full reply toggle.
+The cursor bubble displays only concise replies; detailed responses are available in task History.
 Connected sessions are asked to append a short `<cursor_reply>` summary while retaining their detailed answer.
-When no summary is supplied, the bubble labels its first-paragraph and command excerpt as Preview.
-The full response remains in the original session and can be viewed in the expanded bubble.
+Only a complete dedicated cursor_reply block outside code examples is accepted for linked sessions.
+Quoted tag mentions, unfinished streamed blocks, and pointing metadata cannot become cursor text.
+If no summary is supplied, a short History notice appears instead of exposing the full response.
+The full response remains in the original session and task History.
+Cursor display is hard-limited to 60 words and 600 characters.
 Formatting is rendered locally and does not change the connected conversation or model.

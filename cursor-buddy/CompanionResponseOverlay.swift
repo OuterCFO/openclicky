@@ -20,12 +20,10 @@ final class CompanionResponseOverlayViewModel: ObservableObject {
     @Published var streamingResponseText: String = ""
     @Published var isShowingResponse: Bool = false
     @Published var isHovered = false
-    @Published var showsFullReply = false
     @Published var textHeight: CGFloat = 18
     @Published var textWidth: CGFloat = 280
-    var onToggle: (() -> Void)?
-    var presentation: CursorReplyPresentation { CursorReplyPresentation(streamingResponseText) }
-    var displayedText: String { showsFullReply ? presentation.full : presentation.compact }
+    var presentation: CursorReplyPresentation { CursorReplyPresentation(streamingResponseText, requiresSummary: companion?.boundCodexThreadID != nil) }
+    var displayedText: String { presentation.compact }
     weak var companion: CompanionManager?
 }
 
@@ -54,11 +52,7 @@ final class CompanionResponseOverlayManager {
 
     func bind(companion: CompanionManager) {
         overlayViewModel.companion = companion
-        overlayViewModel.onToggle = { [weak self] in
-            guard let self else { return }
-            self.overlayViewModel.showsFullReply.toggle()
-            self.resizePanelToFitContent()
-        }
+
     }
 
     func showOverlayAndBeginStreaming(clearText: Bool = true) {
@@ -66,7 +60,6 @@ final class CompanionResponseOverlayManager {
 
         if clearText {
             overlayViewModel.streamingResponseText = ""
-            overlayViewModel.showsFullReply = false
         }
         overlayViewModel.isHovered = false
         overlayViewModel.isShowingResponse = true
@@ -305,13 +298,8 @@ private struct CompanionResponseOverlayView: View {
                 .accessibilityLabel("Dismiss coaching reply")
                 .help("Dismiss reply and highlights (Esc)")
             }
-            HStack {
-                Text(viewModel.showsFullReply ? "Full reply" : (viewModel.presentation.hasSummary ? "Quick reply" : "Preview"))
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
-                Spacer()
-                Button(viewModel.showsFullReply ? "Compact" : "Full reply") { viewModel.onToggle?() }
-                    .font(.system(size: 11)).buttonStyle(.plain)
-            }
+            Text("Quick reply · Full answer in History")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)

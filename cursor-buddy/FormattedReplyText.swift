@@ -92,36 +92,59 @@ nonisolated enum ReplyMarkdown {
 
 /// Presentation only: the session's canonical response is never shortened or rewritten.
 nonisolated struct CursorReplyPresentation {
+    static let unavailable = "Concise reply unavailable. Open History for the full answer."
     let full: String
     let compact: String
     let hasSummary: Bool
 
-    init(_ source: String) {
-        let opening = "<cursor_reply>"
-        let closing = "</cursor_reply>"
-        if let start = source.range(of: opening) {
-            let tail = source[start.upperBound...]
-            let end = tail.range(of: closing)
-            let summary = String(tail[..<(end?.lowerBound ?? tail.endIndex)]).trimmingCharacters(in: .whitespacesAndNewlines)
-            let before = String(source[..<start.lowerBound])
-            let after = end.map { String(source[$0.upperBound...]) } ?? ""
-            full = (before + after).trimmingCharacters(in: .whitespacesAndNewlines)
-            compact = summary.isEmpty ? Self.preview(full) : summary
-            hasSummary = !summary.isEmpty
-        } else {
-            full = source
-            compact = Self.preview(source)
-            hasSummary = false
-        }
+    init(_ source: String, requiresSummary: Bool = true) {
+        full = source // Never rewrite the session's canonical answer.
+        let summary = Self.dedicatedSummary(source)
+        hasSummary = summary != nil
+        compact = summary.map(Self.bounded) ?? (requiresSummary ? Self.unavailable : Self.bounded(source))
     }
 
-    private static func preview(_ source: String) -> String {
-        // Whole paragraphs preserve Markdown; include the first command when present.
-        let blocks = source.components(separatedBy: "\n\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard let first = blocks.first else { return source }
-        if let command = blocks.dropFirst().first(where: { $0.contains("```") }), first.count < 400 {
-            return first + "\n\n" + command
+    private static func dedicatedSummary(_ source: String) -> String? {
+        let opening = "<cursor_reply>"
+        let closing = "</cursor_reply>"
+        var fence: String?
+        var collecting: String?
+        var latest: String?
+        for rawLine in source.components(separatedBy: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            // A quoted inline mention or fenced example is never a display payload.
+            if collecting == nil {
+                if line.hasPrefix("```") || line.hasPrefix("~~~") {
+                    let marker = String(line.prefix(3))
+                    if fence == marker { fence = nil } else if fence == nil { fence = marker }
+                    continue
+                }
+                guard fence == nil, line.hasPrefix(opening) else { continue }
+                collecting = String(line.dropFirst(opening.count))
+            } else {
+                collecting! += "\n" + rawLine
+            }
+            if let value = collecting, let end = value.range(of: closing),
+               value[end.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let body = String(value[..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !body.isEmpty && !body.contains(opening) { latest = body }
+                collecting = nil
+            }
         }
-        return first
+        return latest // Incomplete streaming blocks are never displayed.
+    }
+
+    private static func bounded(_ source: String) -> String {
+        var value = source.replacingOccurrences(of: #"\[POINT:[^\]\n]*\]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = (try? NSRegularExpression(pattern: #"\S+"#))?.matches(in: value, range: NSRange(location: 0, length: (value as NSString).length)) ?? []
+        if words.count > 60 {
+            value = (value as NSString).substring(to: NSMaxRange(words[59].range)) + "…"
+        }
+        if value.count > 600 {
+            let prefix = String(value.prefix(599))
+            value = prefix.lastIndex(where: { $0.isWhitespace }).map { String(prefix[..<$0]) + "…" } ?? unavailable
+        }
+        return value.isEmpty ? unavailable : value
     }
 }
