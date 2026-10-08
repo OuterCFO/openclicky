@@ -99,7 +99,7 @@ nonisolated struct CursorReplyPresentation {
 
     init(_ source: String, requiresSummary: Bool = true) {
         full = source // Never rewrite the session's canonical answer.
-        let summary = Self.dedicatedSummary(source)
+        let summary = Self.dedicatedSummary(CursorResponseContract.normalizePresentation(source))
         hasSummary = summary != nil
         compact = summary.map(Self.bounded) ?? (requiresSummary ? Self.unavailable : Self.bounded(source))
     }
@@ -112,18 +112,20 @@ nonisolated struct CursorReplyPresentation {
         var latest: String?
         for rawLine in source.components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            // A quoted inline mention or fenced example is never a display payload.
-            if collecting == nil {
-                if line.hasPrefix("```") || line.hasPrefix("~~~") {
-                    let marker = String(line.prefix(3))
-                    if fence == marker { fence = nil } else if fence == nil { fence = marker }
-                    continue
-                }
-                guard fence == nil, line.hasPrefix(opening) else { continue }
-                collecting = String(line.dropFirst(opening.count))
-            } else {
-                collecting! += "\n" + rawLine
+            if line.hasPrefix("```") || line.hasPrefix("~~~") {
+                let marker = String(line.prefix(3))
+                if fence == marker { fence = nil } else if fence == nil { fence = marker }
+                if collecting != nil { collecting! += "\n" + rawLine }
+                continue
             }
+            if fence != nil {
+                if collecting != nil { collecting! += "\n" + rawLine }
+                continue
+            }
+            if line.hasPrefix(opening) {
+                // A newer opening replaces an unclosed mention earlier in prose.
+                collecting = String(line.dropFirst(opening.count))
+            } else if collecting != nil { collecting! += "\n" + rawLine }
             if let value = collecting, let end = value.range(of: closing),
                value[end.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let body = String(value[..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)

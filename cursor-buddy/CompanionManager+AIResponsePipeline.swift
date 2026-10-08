@@ -366,6 +366,7 @@ extension CompanionManager {
                 // Each publish hits the main actor, contending with the
                 // cursor-tracking timer and audio scheduler. 100ms cadence
                 // is plenty for visible "live caption" feedback.
+                var didDispatchStreamingPoint = false
                 var lastCardPublishedAt: Date = .distantPast
                 let cardPublishInterval: TimeInterval = 0.1
                 // Build the assistant prefill so Haiku's reply continues
@@ -394,7 +395,22 @@ extension CompanionManager {
                     userPrompt: userPromptForClaude,
                     assistantPrefill: assistantPrefillText,
                     onTextChunk: { accumulatedText in
-                        let parsedSpoken = Self.parsePointingCoordinates(from: accumulatedText).spokenText
+                        let streamed = Self.parsePointingCoordinates(from: accumulatedText)
+                        if !Task.isCancelled, !didDispatchStreamingPoint, let point = streamed.coordinate {
+                            let capture = self.tutorTargetScreenCapture(from: screenCaptures, screenNumber: streamed.screenNumber)
+                            if let capture, SharedCodexSessionContract.isValidScreenshotPoint(point,
+                                width: capture.screenshotWidthInPixels, height: capture.screenshotHeightInPixels) {
+                                self.voiceState = .idle
+                                self.cursorOverlayState.replyPointerIsPinned = true
+                                self.cursorOverlayState.replyHasVerifiedTarget = true
+                                self.detectedElementDisplayFrame = capture.displayFrame
+                                self.detectedElementScreenLocation = self.globalPoint(fromScreenshotPoint: point, in: capture)
+                                self.detectedElementBubbleText = Self.pointingBubbleText(for: streamed.elementLabel)
+                                self.showCursorOverlayIfAvailable()
+                                didDispatchStreamingPoint = true
+                            }
+                        }
+                        let parsedSpoken = streamed.spokenText
                         let trimmed = parsedSpoken.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !trimmed.isEmpty {
                             let now = Date()
@@ -498,7 +514,7 @@ extension CompanionManager {
                 // spinner hides the triangle and the flight animation is invisible.
                 // Reply display must not depend on TTS or a model deciding to point.
                 self.voiceState = .idle
-                self.cursorOverlayState.replyPointerIsPinned = true
+                if !didDispatchStreamingPoint { self.cursorOverlayState.replyPointerIsPinned = true }
                 self.showCursorOverlayIfAvailable()
 
                 // Pick the screen capture for the buddy to point on.
@@ -539,6 +555,7 @@ extension CompanionManager {
                    SharedCodexSessionContract.isValidScreenshotPoint(pointCoordinate,
                        width: targetScreenCapture.screenshotWidthInPixels,
                        height: targetScreenCapture.screenshotHeightInPixels) {
+                    if !didDispatchStreamingPoint {
                     self.cursorOverlayState.replyHasVerifiedTarget = true
                     // Claude's coordinates are in the screenshot's pixel space
                     // (top-left origin, e.g. 1280x831). Scale to the display's
@@ -582,6 +599,7 @@ extension CompanionManager {
                     )
                     ClickyAnalytics.trackElementPointed(elementLabel: parseResult.elementLabel)
                     print("🎯 Element pointing: (\(Int(pointCoordinate.x)), \(Int(pointCoordinate.y))) → \"\(parseResult.elementLabel ?? "element")\"")
+                    }
                 } else if let visualOverlay = parseResult.visualOverlay,
                           let targetScreenCapture {
                     self.showVisualGuidanceOverlay(
@@ -1092,6 +1110,7 @@ extension CompanionManager {
             return try await sharedCodexSession.submit(threadID: threadID, prompt: userPrompt,
                 images: images, onTextChunk: onTextChunk)
         }
+        let responseSystemPrompt = systemPrompt + "\n\n" + CursorResponseContract.instructions
         let requestedModelID = modelID ?? selectedModel
         let selectedVoiceResponseModel = OpenClickyModelCatalog.isSpeechModelID(requestedModelID)
             ? OpenClickyModelCatalog.voiceAnalysisModel(withID: requestedModelID)
@@ -1102,7 +1121,7 @@ extension CompanionManager {
         case .apple:
             return try await AppleFoundationModelsVoiceClient.analyzeVoiceResponse(
                 images: images,
-                systemPrompt: systemPrompt,
+                systemPrompt: responseSystemPrompt,
                 conversationHistory: conversationHistory,
                 userPrompt: userPrompt,
                 onTextChunk: onTextChunk
@@ -1111,10 +1130,10 @@ extension CompanionManager {
             return try await analyzeClaudeResponse(
                 images: images,
                 model: selectedVoiceResponseModel.id,
-                systemPrompt: systemPrompt,
+                systemPrompt: responseSystemPrompt,
                 conversationHistory: conversationHistory,
                 userPrompt: userPrompt,
-                assistantPrefill: assistantPrefill,
+                assistantPrefill: nil, // Mandatory point-first format forbids a prose prefill.
                 onTextChunk: onTextChunk
             )
         case .openAI:
@@ -1124,7 +1143,7 @@ extension CompanionManager {
             return try await analyzeOpenAIOrCodexVoiceResponse(
                 images: images,
                 model: selectedVoiceResponseModel.id,
-                systemPrompt: systemPrompt,
+                systemPrompt: responseSystemPrompt,
                 conversationHistory: conversationHistory,
                 userPrompt: userPrompt,
                 onTextChunk: onTextChunk
@@ -1139,7 +1158,7 @@ extension CompanionManager {
             return try await analyzeCodexVoiceResponse(
                 images: images,
                 model: selectedVoiceResponseModel.id,
-                systemPrompt: systemPrompt,
+                systemPrompt: responseSystemPrompt,
                 conversationHistory: conversationHistory,
                 userPrompt: userPrompt,
                 onTextChunk: onTextChunk

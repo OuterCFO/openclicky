@@ -10,7 +10,7 @@ nonisolated enum CursorPointDirective {
     }
 
     static func extract(_ source: String) -> Parsed? {
-        let lines = source.components(separatedBy: "\n")
+        let lines = CursorResponseContract.normalizePresentation(source).components(separatedBy: "\n")
         let pattern = #"^\[POINT:(?:none|(\d+)\s*,\s*(\d+)(?::([^\]:\s][^\]:]*?))?(?::screen(\d+))?)\]$"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         var fence: String?
@@ -47,5 +47,45 @@ nonisolated enum CursorPointDirective {
         return Parsed(spokenText: spoken, coordinate: coordinate,
                       label: field(3)?.trimmingCharacters(in: .whitespaces) ?? (coordinate == nil ? "none" : nil),
                       screenNumber: field(4).flatMap(Int.init))
+    }
+}
+
+nonisolated enum CursorResponseContract {
+    static let instructions = """
+    MANDATORY OPENCLICKY RESPONSE FORMAT. This overrides older instructions about tag placement.
+    Every user-facing answer must START with a complete [POINT:x,y:label] directive on its own first line, optionally ending with :screenN inside the bracket. Use verified screenshot pixels, with origin at the top-left. If no target is verifiable or no screenshot is available, START with [POINT:none]. Never invent a target.
+    After the first POINT line, write the full answer or detailed explanation normally.
+    FINISH with the concise cursor reply as the LAST paragraph/block of the answer. Write the opening tag <cursor_reply> on its own SEPARATE line above the summary. Write the concise summary of the answer on the next line(s), at most 60 words and 600 characters. Write </cursor_reply> on its own SEPARATE line below the summary; this closing tag must be the LAST nonempty line. Write nothing after it.
+    Do not put POINT or cursor_reply tags inline in prose, in a code fence, or in a quotation. Do not introduce the response with an explanation before POINT. The cursor reply summarizes the answer or immediate next action, without metadata or discussion of this format. It belongs at the END, not immediately after POINT when a full answer is provided.
+    Required line order:
+    [POINT:x,y:label]
+    Full answer or detailed explanation.
+    <cursor_reply>
+    Concise summary of the answer.
+    </cursor_reply>
+    """
+
+    /// Tolerate real control tags emitted inline, while retaining quoted examples as literal text.
+    static func normalizePresentation(_ source: String) -> String {
+        var fence: String?
+        return source.components(separatedBy: "\n").map { raw -> String in
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                let marker = String(trimmed.prefix(3))
+                if fence == marker { fence = nil } else if fence == nil { fence = marker }
+                return raw
+            }
+            guard fence == nil, !trimmed.hasPrefix(">") else { return raw }
+            // Backtick-delimited inline code is never interpreted as an executable directive.
+            let segments = raw.components(separatedBy: "`")
+            return segments.enumerated().map { index, part in
+                guard index.isMultiple(of: 2) else { return part }
+                var value = part.replacingOccurrences(of: #"(\[POINT:(?:none|\d+\s*,\s*\d+(?::[^\]\n]+)?)\])"#,
+                    with: "\n$1\n", options: .regularExpression)
+                value = value.replacingOccurrences(of: "<cursor_reply>", with: "\n<cursor_reply>\n")
+                    .replacingOccurrences(of: "</cursor_reply>", with: "\n</cursor_reply>\n")
+                return value
+            }.joined(separator: "`")
+        }.joined(separator: "\n")
     }
 }

@@ -247,7 +247,7 @@ final class CodexSharedSessionClient {
     }
 
     private static func displayHint(images: [(data: Data, label: String)]) -> String {
-        let compactHint = "\n\n[Cursor presentation: keep your full response as detailed as useful. Also append a dedicated <cursor_reply> block for the small cursor bubble, with its opening and closing tags on separate lines. Put only the direct answer or immediate next action inside it. Use at most 60 words and 600 characters. No recap, commentary about the transcript, display instructions, tags, or POINT markers inside that block. Keep necessary commands, paths, and cautions exact. This is a display summary, not a replacement for the full answer.]"
+        let compactHint = "\n\n" + CursorResponseContract.instructions
         guard !images.isEmpty else { return compactHint }
         return "\n\n[OpenClicky display hint: screenshots are attached to this same conversation. For a relevant visible target, include [POINT:x,y:label] with x/y as screenshot pixels. Do not invent actions or targets. Screens: " + images.map(\.label).joined(separator: "; ") + "]" + compactHint
     }

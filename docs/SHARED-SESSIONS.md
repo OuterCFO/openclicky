@@ -95,3 +95,12 @@ These rules guarantee app presentation, not perfect visual target identification
 
 Pointing directives are parsed independently of concise summaries.
 A dedicated POINT line may precede or follow the cursor_reply block; quoted or fenced examples do not trigger movement.
+
+## Mandatory response order
+
+Every OpenClicky request supplies one shared output contract: a complete POINT directive on its own first line, then the full answer, then the concise summary as the last block.
+The cursor_reply opening and closing tags each occupy a separate line above and below that summary.
+Nothing follows the closing tag.
+If a target cannot be verified, the first directive is POINT:none; coordinates must never be invented.
+The app dispatches a valid point during streaming and avoids dispatching it again at final completion.
+Presentation parsing tolerates misplaced inline tags without executing backtick or fenced examples; the canonical session text remains unchanged.

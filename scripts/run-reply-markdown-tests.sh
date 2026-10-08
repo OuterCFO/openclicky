@@ -47,6 +47,20 @@ precondition(CursorPointDirective.extract("```text\n[POINT:1,2:example]\n```") =
 precondition(CursorPointDirective.extract("The `[POINT:1,2:example]` tag is quoted.") == nil)
 precondition(CursorPointDirective.extract("<cursor_reply>\n[POINT:1,2:example]\n</cursor_reply>") == nil)
 precondition(CursorPointDirective.extract("[POINT:none]\n<cursor_reply>No target.</cursor_reply>")?.coordinate == nil)
+let inline = "Yes. Click the empty prompt [POINT:659,32:top-right shell prompt]. Type cat there. <cursor_reply>\nClick the prompt and press Tab.\n</cursor_reply>"
+let inlinePoint = CursorPointDirective.extract(inline)!
+precondition(inlinePoint.coordinate == CGPoint(x: 659, y: 32))
+precondition(CursorReplyPresentation(inlinePoint.spokenText).compact == "Click the prompt and press Tab.")
+precondition(CursorReplyPresentation("Explanation. <cursor_reply>Concise.</cursor_reply>").compact == "Concise.")
+precondition(CursorReplyPresentation("The <cursor_reply> tag is a format.\n```xml\n<cursor_reply>Quoted example.</cursor_reply>\n```\n<cursor_reply>Actual answer.</cursor_reply>").compact == "Actual answer.")
+precondition(CursorPointDirective.extract("Example `[POINT:659,32:quoted]`.") == nil)
+precondition(CursorResponseContract.instructions.contains("START") && CursorResponseContract.instructions.contains("SEPARATE line"))
+let ordered = "[POINT:659,32:shell prompt]\nFull answer with detailed guidance.\n<cursor_reply>\nClick the top-right prompt.\n</cursor_reply>"
+let orderedPoint = CursorPointDirective.extract(ordered)!
+precondition(orderedPoint.coordinate == CGPoint(x: 659, y: 32))
+precondition(CursorReplyPresentation(orderedPoint.spokenText).compact == "Click the top-right prompt.")
+precondition(CursorResponseContract.instructions.contains("LAST paragraph/block") && CursorResponseContract.instructions.contains("Write nothing after it."))
+print("PASS: inline screenshot regression, standalone summary recovery, quoted/fenced safety, and mandatory response order")
 print("PASS: real point-before-summary regression, metadata isolation, screen selection, and quoted-example rejection")
 print("PASS: screenshot regression, dedicated summary isolation, code examples, absent/partial summary, hard length limits, and control metadata")
 print("PASS: reply bold, italics, paragraphs, code, nested highlight, links, and partial Markdown")

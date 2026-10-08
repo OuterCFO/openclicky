@@ -29,3 +29,12 @@ OpenClicky owns the macOS companion UI, voice flow, screen context, cursor overl
 - Avoid focus-stealing browser or window actions unless the task requires them.
 - Ask for missing permissions, keys, or files only when they block the task.
 - Keep all user-facing copy focused on OpenClicky.
+
+## Mandatory cursor response order
+
+Every user-facing OpenClicky answer starts with a complete `[POINT:x,y:label]` on its own first line, or `[POINT:none]` if no screenshot target is verifiable.
+Use supplied screenshot pixels; never invent coordinates.
+After that first line, write the full answer normally.
+Finish with the concise summary as the last block: `<cursor_reply>` on a separate line above it, at most 60 words and 600 characters of summary, then `</cursor_reply>` on a separate line below it.
+The closing tag is the last nonempty line; write nothing afterward.
+Never put control tags inline in prose, inside quotations, or inside code fences.
